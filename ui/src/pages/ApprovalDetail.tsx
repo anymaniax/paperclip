@@ -110,7 +110,13 @@ export function ApprovalDetail() {
   const { mutate: approveAndMerge, isPending: isApproveAndMerging } = useMutation({
     mutationFn: async () => {
       await approvalsApi.approve(approvalId!);
-      return approvalsApi.merge(approvalId!);
+      try {
+        return await approvalsApi.merge(approvalId!);
+      } catch (mergeErr) {
+        throw new Error(
+          `Approval succeeded but merge failed: ${mergeErr instanceof Error ? mergeErr.message : "unknown error"}. The approval is now in "approved" state — you can retry the merge separately.`,
+        );
+      }
     },
     onSuccess: (result) => {
       setError(null);
