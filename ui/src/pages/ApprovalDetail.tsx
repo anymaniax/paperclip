@@ -10,11 +10,13 @@ import { StatusBadge } from "../components/StatusBadge";
 import { Identity } from "../components/Identity";
 import { typeLabel, typeIcon, defaultTypeIcon, ApprovalPayloadRenderer } from "../components/ApprovalPayload";
 import { PageSkeleton } from "../components/PageSkeleton";
+import { DiffViewer } from "../components/DiffViewer";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { CheckCircle2, ChevronRight, Sparkles } from "lucide-react";
+import { CheckCircle2, ChevronRight, GitBranch, GitMerge, Sparkles, AlertTriangle } from "lucide-react";
 import type { ApprovalComment } from "@paperclipai/shared";
 import { MarkdownBody } from "../components/MarkdownBody";
+import type { MergeResult } from "../api/approvals";
 
 export function ApprovalDetail() {
   const { approvalId } = useParams<{ approvalId: string }>();
@@ -26,6 +28,7 @@ export function ApprovalDetail() {
   const [commentBody, setCommentBody] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [showRawPayload, setShowRawPayload] = useState(false);
+  const [mergeResult, setMergeResult] = useState<MergeResult | null>(null);
 
   const { data: approval, isLoading } = useQuery({
     queryKey: queryKeys.approvals.detail(approvalId!),
@@ -33,6 +36,9 @@ export function ApprovalDetail() {
     enabled: !!approvalId,
   });
   const resolvedCompanyId = approval?.companyId ?? selectedCompanyId;
+
+  const isMergeRequest = approval?.type === "merge_request";
+  const payload = (approval?.payload ?? {}) as Record<string, unknown>;
 
   const { data: comments } = useQuery({
     queryKey: queryKeys.approvals.comments(approvalId!),
@@ -50,6 +56,12 @@ export function ApprovalDetail() {
     queryKey: queryKeys.agents.list(resolvedCompanyId ?? ""),
     queryFn: () => agentsApi.list(resolvedCompanyId ?? ""),
     enabled: !!resolvedCompanyId,
+  });
+
+  const { data: diffResult, isLoading: isDiffLoading } = useQuery({
+    queryKey: queryKeys.approvals.diff(approvalId!),
+    queryFn: () => approvalsApi.getDiff(approvalId!),
+    enabled: !!approvalId && isMergeRequest,
   });
 
   useEffect(() => {
@@ -75,6 +87,7 @@ export function ApprovalDetail() {
     queryClient.invalidateQueries({ queryKey: queryKeys.approvals.detail(approvalId) });
     queryClient.invalidateQueries({ queryKey: queryKeys.approvals.comments(approvalId) });
     queryClient.invalidateQueries({ queryKey: queryKeys.approvals.issues(approvalId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.approvals.diff(approvalId) });
     if (approval?.companyId) {
       queryClient.invalidateQueries({ queryKey: queryKeys.approvals.list(approval.companyId) });
       queryClient.invalidateQueries({
@@ -92,6 +105,32 @@ export function ApprovalDetail() {
       navigate(`/approvals/${approvalId}?resolved=approved`, { replace: true });
     },
     onError: (err) => setError(err instanceof Error ? err.message : "Approve failed"),
+  });
+
+  const { mutate: approveAndMerge, isPending: isApproveAndMerging } = useMutation({
+    mutationFn: async () => {
+      await approvalsApi.approve(approvalId!);
+      return approvalsApi.merge(approvalId!);
+    },
+    onSuccess: (result) => {
+      setError(null);
+      setMergeResult(result);
+      refresh();
+      if (result.success) {
+        navigate(`/approvals/${approvalId}?resolved=approved`, { replace: true });
+      }
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : "Approve & merge failed"),
+  });
+
+  const { mutate: mergeOnly, isPending: isMerging } = useMutation({
+    mutationFn: () => approvalsApi.merge(approvalId!),
+    onSuccess: (result) => {
+      setError(null);
+      setMergeResult(result);
+      refresh();
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : "Merge failed"),
   });
 
   const rejectMutation = useMutation({
@@ -144,7 +183,6 @@ export function ApprovalDetail() {
   if (isLoading) return <PageSkeleton variant="detail" />;
   if (!approval) return <p className="text-sm text-muted-foreground">Approval not found.</p>;
 
-  const payload = approval.payload as Record<string, unknown>;
   const linkedAgentId = typeof payload.agentId === "string" ? payload.agentId : null;
   const isActionable = approval.status === "pending" || approval.status === "revision_requested";
   const TypeIcon = typeIcon[approval.type] ?? defaultTypeIcon;
@@ -169,6 +207,8 @@ export function ApprovalDetail() {
             to: "/approvals",
           };
 
+  const canMerge = isMergeRequest && approval.status === "approved" && !mergeResult?.success;
+
   return (
     <div className="space-y-6 max-w-3xl">
       {showApprovedBanner && (
@@ -180,9 +220,13 @@ export function ApprovalDetail() {
                 <Sparkles className="h-3 w-3 text-green-500 dark:text-green-200 absolute -right-2 -top-1 animate-pulse" />
               </div>
               <div>
-                <p className="text-sm text-green-800 dark:text-green-100 font-medium">Approval confirmed</p>
+                <p className="text-sm text-green-800 dark:text-green-100 font-medium">
+                  {isMergeRequest ? "Approved & merged" : "Approval confirmed"}
+                </p>
                 <p className="text-xs text-green-700 dark:text-green-200/90">
-                  Requesting agent was notified to review this approval and linked issues.
+                  {isMergeRequest
+                    ? "Code has been merged successfully."
+                    : "Requesting agent was notified to review this approval and linked issues."}
                 </p>
               </div>
             </div>
@@ -197,6 +241,38 @@ export function ApprovalDetail() {
           </div>
         </div>
       )}
+
+      {/* Merge result banner */}
+      {mergeResult && !mergeResult.success && (
+        <div className="border border-red-300 dark:border-red-700/40 bg-red-50 dark:bg-red-900/20 rounded-lg px-4 py-3">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm text-red-800 dark:text-red-100 font-medium">Merge failed</p>
+              <p className="text-xs text-red-700 dark:text-red-200/90 mt-1 font-mono whitespace-pre-wrap">
+                {mergeResult.conflictDetails ?? "Unknown error during merge"}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {mergeResult?.success && (
+        <div className="border border-green-300 dark:border-green-700/40 bg-green-50 dark:bg-green-900/20 rounded-lg px-4 py-3">
+          <div className="flex items-start gap-2">
+            <GitMerge className="h-4 w-4 text-green-600 dark:text-green-400 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm text-green-800 dark:text-green-100 font-medium">Merged successfully</p>
+              {mergeResult.mergeCommitSha && (
+                <p className="text-xs text-green-700 dark:text-green-200/90 font-mono mt-0.5">
+                  Commit: {mergeResult.mergeCommitSha.slice(0, 7)}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="border border-border rounded-lg p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -208,6 +284,30 @@ export function ApprovalDetail() {
           </div>
           <StatusBadge status={approval.status} />
         </div>
+
+        {/* Branch info bar for merge requests */}
+        {isMergeRequest && (
+          <div className="flex items-center gap-2 rounded-md bg-muted/40 px-3 py-2">
+            <GitBranch className="h-4 w-4 text-muted-foreground shrink-0" />
+            <span className="font-mono text-xs font-medium">{String(payload.branch ?? "")}</span>
+            <span className="text-muted-foreground text-xs">&rarr;</span>
+            <span className="font-mono text-xs font-medium">{String(payload.baseBranch ?? "")}</span>
+            {typeof payload.commitSha === "string" && (
+              <span className="ml-auto font-mono text-[10px] text-muted-foreground">
+                {payload.commitSha.slice(0, 7)}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Commit message for merge requests */}
+        {isMergeRequest && typeof payload.commitMessage === "string" && (
+          <div className="text-sm">
+            <p className="text-xs text-muted-foreground mb-1">Commit message</p>
+            <p className="text-sm font-mono bg-muted/30 rounded px-2 py-1.5">{payload.commitMessage}</p>
+          </div>
+        )}
+
         <div className="text-sm space-y-1">
           {approval.requestedByAgentId && (
             <div className="flex items-center gap-2">
@@ -218,7 +318,9 @@ export function ApprovalDetail() {
               />
             </div>
           )}
-          <ApprovalPayloadRenderer type={approval.type} payload={payload} />
+          {!isMergeRequest && (
+            <ApprovalPayloadRenderer type={approval.type} payload={payload} />
+          )}
           <button
             type="button"
             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mt-2"
@@ -260,7 +362,7 @@ export function ApprovalDetail() {
           </div>
         )}
         <div className="flex flex-wrap items-center gap-2">
-          {isActionable && (
+          {isActionable && !isMergeRequest && (
             <>
               <Button
                 size="sm"
@@ -279,6 +381,38 @@ export function ApprovalDetail() {
                 Reject
               </Button>
             </>
+          )}
+          {isActionable && isMergeRequest && (
+            <>
+              <Button
+                size="sm"
+                className="bg-green-700 hover:bg-green-600 text-white"
+                onClick={() => approveAndMerge()}
+                disabled={isApproveAndMerging}
+              >
+                <GitMerge className="h-3.5 w-3.5 mr-1.5" />
+                {isApproveAndMerging ? "Merging\u2026" : "Approve & Merge"}
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => rejectMutation.mutate()}
+                disabled={rejectMutation.isPending}
+              >
+                Reject
+              </Button>
+            </>
+          )}
+          {canMerge && (
+            <Button
+              size="sm"
+              className="bg-green-700 hover:bg-green-600 text-white"
+              onClick={() => mergeOnly()}
+              disabled={isMerging}
+            >
+              <GitMerge className="h-3.5 w-3.5 mr-1.5" />
+              {isMerging ? "Merging\u2026" : "Merge now"}
+            </Button>
           )}
           {approval.status === "pending" && (
             <Button
@@ -317,6 +451,24 @@ export function ApprovalDetail() {
         </div>
       </div>
 
+      {/* Diff viewer for merge requests */}
+      {isMergeRequest && (
+        <div className="space-y-3">
+          <h3 className="text-sm font-medium">Code Changes</h3>
+          {isDiffLoading ? (
+            <div className="border border-border rounded-lg p-6 text-center">
+              <p className="text-sm text-muted-foreground">Loading diff...</p>
+            </div>
+          ) : diffResult?.files && diffResult.files.length > 0 ? (
+            <DiffViewer files={diffResult.files} />
+          ) : (
+            <div className="border border-border rounded-lg p-6 text-center">
+              <p className="text-sm text-muted-foreground">No file changes found</p>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="border border-border rounded-lg p-4 space-y-3">
         <h3 className="text-sm font-medium">Comments ({comments?.length ?? 0})</h3>
         <div className="space-y-2">
@@ -353,7 +505,7 @@ export function ApprovalDetail() {
             onClick={() => addCommentMutation.mutate()}
             disabled={!commentBody.trim() || addCommentMutation.isPending}
           >
-            {addCommentMutation.isPending ? "Posting…" : "Post comment"}
+            {addCommentMutation.isPending ? "Posting\u2026" : "Post comment"}
           </Button>
         </div>
       </div>
