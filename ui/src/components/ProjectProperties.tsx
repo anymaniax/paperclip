@@ -26,6 +26,12 @@ const PROJECT_STATUSES = [
   { value: "cancelled", label: "Cancelled" },
 ];
 
+const MERGE_REVIEW_POLICY_OPTIONS = [
+  { value: "required", label: "Required", description: "Board must approve every merge" },
+  { value: "auto_merge", label: "Auto Merge", description: "Merges automatically, approval for audit only" },
+  { value: "disabled", label: "Disabled", description: "No merge-request approvals" },
+] as const;
+
 // TODO(issue-worktree-support): re-enable this UI once the workflow is ready to ship.
 const SHOW_EXPERIMENTAL_ISSUE_WORKTREE_UI = false;
 
@@ -41,6 +47,7 @@ export type ProjectConfigFieldKey =
   | "name"
   | "description"
   | "status"
+  | "mergeReviewPolicy"
   | "goals"
   | "execution_workspace_enabled"
   | "execution_workspace_default_mode"
@@ -145,6 +152,52 @@ function ProjectStatusPicker({ status, onChange }: { status: string; onChange: (
             }}
           >
             {s.label}
+          </Button>
+        ))}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+const mergeReviewPolicyColors: Record<string, string> = {
+  required: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
+  auto_merge: "bg-green-500/15 text-green-700 dark:text-green-300",
+  disabled: "bg-muted text-muted-foreground",
+};
+
+function MergeReviewPolicyPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const colorClass = mergeReviewPolicyColors[value] ?? mergeReviewPolicyColors.required;
+  const label = MERGE_REVIEW_POLICY_OPTIONS.find((o) => o.value === value)?.label ?? value;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          className={cn(
+            "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap shrink-0 cursor-pointer hover:opacity-80 transition-opacity",
+            colorClass,
+          )}
+        >
+          {label}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-52 p-1" align="start">
+        {MERGE_REVIEW_POLICY_OPTIONS.map((option) => (
+          <Button
+            key={option.value}
+            variant="ghost"
+            size="sm"
+            className={cn("w-full justify-start gap-2 text-xs h-auto py-1.5", option.value === value && "bg-accent")}
+            onClick={() => {
+              onChange(option.value);
+              setOpen(false);
+            }}
+          >
+            <div className="text-left">
+              <div>{option.label}</div>
+              <div className="text-[10px] text-muted-foreground font-normal">{option.description}</div>
+            </div>
           </Button>
         ))}
       </PopoverContent>
@@ -406,6 +459,21 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
             />
           ) : (
             <StatusBadge status={project.status} />
+          )}
+        </PropertyRow>
+        <PropertyRow label={<FieldLabel label="Merge" state={fieldState("mergeReviewPolicy")} />}>
+          {onUpdate || onFieldUpdate ? (
+            <MergeReviewPolicyPicker
+              value={project.mergeReviewPolicy ?? "required"}
+              onChange={(mergeReviewPolicy) => commitField("mergeReviewPolicy", { mergeReviewPolicy })}
+            />
+          ) : (
+            <span className={cn(
+              "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
+              mergeReviewPolicyColors[project.mergeReviewPolicy] ?? mergeReviewPolicyColors.required,
+            )}>
+              {MERGE_REVIEW_POLICY_OPTIONS.find((o) => o.value === project.mergeReviewPolicy)?.label ?? project.mergeReviewPolicy}
+            </span>
           )}
         </PropertyRow>
         {project.leadAgentId && (
