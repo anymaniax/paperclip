@@ -432,7 +432,7 @@ const UnifiedDiffLine = ({
     <div className={cn("flex text-xs font-mono leading-5 min-w-0", lineStyles[line.type])}>
       <span
         className={cn(
-          "w-10 shrink-0 text-right px-1 select-none border-r border-border/40",
+          "w-8 sm:w-10 shrink-0 text-right px-1 select-none border-r border-border/40",
           lineGutterStyles[line.type],
         )}
       >
@@ -446,7 +446,7 @@ const UnifiedDiffLine = ({
       </span>
       <span
         className={cn(
-          "w-10 shrink-0 text-right px-1 select-none border-r border-border/40",
+          "w-8 sm:w-10 shrink-0 text-right px-1 select-none border-r border-border/40",
           lineGutterStyles[line.type],
         )}
       >
@@ -473,7 +473,7 @@ const SplitDiffHalf = ({
   if (!line) {
     return (
       <div className="w-1/2 flex text-xs font-mono leading-5 min-w-0 bg-muted/20">
-        <span className="w-10 shrink-0 border-r border-border/40" />
+        <span className="w-8 sm:w-10 shrink-0 border-r border-border/40" />
         <span className="flex-1" />
       </div>
     );
@@ -485,7 +485,7 @@ const SplitDiffHalf = ({
     <div className={cn("w-1/2 flex text-xs font-mono leading-5 min-w-0", lineStyles[line.type])}>
       <span
         className={cn(
-          "w-10 shrink-0 text-right px-1 select-none border-r border-border/40",
+          "w-8 sm:w-10 shrink-0 text-right px-1 select-none border-r border-border/40",
           lineGutterStyles[line.type],
         )}
       >
@@ -627,11 +627,33 @@ interface DiffViewerProps {
   files: DiffFile[];
 }
 
+const useIsMobile = (breakpoint = 640): boolean => {
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.innerWidth < breakpoint,
+  );
+  useEffect(() => {
+    const mql = window.matchMedia(`(max-width: ${breakpoint - 1}px)`);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    setIsMobile(mql.matches);
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, [breakpoint]);
+  return isMobile;
+};
+
 export const DiffViewer = ({ files }: DiffViewerProps) => {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const isMobile = useIsMobile();
   const [viewMode, setViewMode] = useState<ViewMode>("unified");
   const highlighter = useHighlighter();
   const isDark = useIsDark();
+
+  // Auto-switch to unified view on mobile
+  useEffect(() => {
+    if (isMobile && viewMode === "split") {
+      setViewMode("unified");
+    }
+  }, [isMobile, viewMode]);
 
   const totalAdditions = files.reduce((sum, f) => sum + f.additions, 0);
   const totalDeletions = files.reduce((sum, f) => sum + f.deletions, 0);
@@ -646,7 +668,7 @@ export const DiffViewer = ({ files }: DiffViewerProps) => {
     <div className="space-y-4">
       {/* File tree summary + view mode toggle */}
       <div className="border border-border rounded-lg p-3 space-y-2">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-sm font-medium">
             {files.length} file{files.length !== 1 ? "s" : ""} changed
           </span>
@@ -659,34 +681,36 @@ export const DiffViewer = ({ files }: DiffViewerProps) => {
                 -{totalDeletions}
               </span>
             </span>
-            <div className="flex items-center border border-border rounded-md overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setViewMode("unified")}
-                className={cn(
-                  "flex items-center gap-1 px-2 py-1 text-xs transition-colors",
-                  viewMode === "unified"
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-accent/30",
-                )}
-              >
-                <AlignJustify className="h-3 w-3" />
-                Unified
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode("split")}
-                className={cn(
-                  "flex items-center gap-1 px-2 py-1 text-xs transition-colors border-l border-border",
-                  viewMode === "split"
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-accent/30",
-                )}
-              >
-                <Columns2 className="h-3 w-3" />
-                Split
-              </button>
-            </div>
+            {!isMobile && (
+              <div className="flex items-center border border-border rounded-md overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setViewMode("unified")}
+                  className={cn(
+                    "flex items-center gap-1 px-2 py-1 text-xs transition-colors",
+                    viewMode === "unified"
+                      ? "bg-accent text-accent-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-accent/30",
+                  )}
+                >
+                  <AlignJustify className="h-3 w-3" />
+                  Unified
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode("split")}
+                  className={cn(
+                    "flex items-center gap-1 px-2 py-1 text-xs transition-colors border-l border-border",
+                    viewMode === "split"
+                      ? "bg-accent text-accent-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-accent/30",
+                  )}
+                >
+                  <Columns2 className="h-3 w-3" />
+                  Split
+                </button>
+              </div>
+            )}
           </div>
         </div>
         <ScrollArea className="max-h-48">

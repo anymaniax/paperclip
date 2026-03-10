@@ -219,7 +219,7 @@ export function ApprovalDetail() {
     <div className="space-y-6 max-w-3xl">
       {showApprovedBanner && (
         <div className="border border-green-300 dark:border-green-700/40 bg-green-50 dark:bg-green-900/20 rounded-lg px-4 py-3 animate-in fade-in zoom-in-95 duration-300">
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
             <div className="flex items-start gap-2">
               <div className="relative mt-0.5">
                 <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-300" />
@@ -239,7 +239,7 @@ export function ApprovalDetail() {
             <Button
               size="sm"
               variant="outline"
-              className="border-green-400 dark:border-green-600/50 text-green-800 dark:text-green-100 hover:bg-green-100 dark:hover:bg-green-900/30"
+              className="border-green-400 dark:border-green-600/50 text-green-800 dark:text-green-100 hover:bg-green-100 dark:hover:bg-green-900/30 w-full sm:w-auto"
               onClick={() => navigate(resolvedCta.to)}
             >
               {resolvedCta.label}
@@ -280,12 +280,12 @@ export function ApprovalDetail() {
       )}
 
       <div className="border border-border rounded-lg p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <TypeIcon className="h-5 w-5 text-muted-foreground shrink-0" />
-            <div>
+            <div className="min-w-0">
               <h2 className="text-lg font-semibold">{typeLabel[approval.type] ?? approval.type.replace(/_/g, " ")}</h2>
-              <p className="text-xs text-muted-foreground font-mono">{approval.id}</p>
+              <p className="text-xs text-muted-foreground font-mono truncate">{approval.id}</p>
             </div>
           </div>
           <StatusBadge status={approval.status} />
@@ -293,13 +293,13 @@ export function ApprovalDetail() {
 
         {/* Branch info bar for merge requests */}
         {isMergeRequest && (
-          <div className="flex items-center gap-2 rounded-md bg-muted/40 px-3 py-2">
+          <div className="flex flex-wrap items-center gap-2 rounded-md bg-muted/40 px-3 py-2">
             <GitBranch className="h-4 w-4 text-muted-foreground shrink-0" />
-            <span className="font-mono text-xs font-medium">{String(payload.branch ?? "")}</span>
+            <span className="font-mono text-xs font-medium break-all">{String(payload.branch ?? "")}</span>
             <span className="text-muted-foreground text-xs">&rarr;</span>
-            <span className="font-mono text-xs font-medium">{String(payload.baseBranch ?? "")}</span>
+            <span className="font-mono text-xs font-medium break-all">{String(payload.baseBranch ?? "")}</span>
             {typeof payload.commitSha === "string" && (
-              <span className="ml-auto font-mono text-[10px] text-muted-foreground">
+              <span className="sm:ml-auto font-mono text-[10px] text-muted-foreground">
                 {payload.commitSha.slice(0, 7)}
               </span>
             )}
