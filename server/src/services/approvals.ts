@@ -8,6 +8,7 @@ import { notifyHireApproved } from "./hire-hook.js";
 import { gitMerge } from "./git-operations.js";
 import { issueApprovalService } from "./issue-approvals.js";
 import { projectService } from "./projects.js";
+import { logActivity } from "./activity-log.js";
 import { logger } from "../middleware/logger.js";
 
 export function approvalService(db: Db) {
@@ -166,16 +167,36 @@ export function approvalService(db: Db) {
             }
             if (repoPath) {
               const mergeResult = await gitMerge(repoPath, mrPayload.baseBranch, mrPayload.branch);
-              logger.info(
-                { approvalId: id, mergeResult },
-                "auto-merge triggered after approval",
-              );
+              await logActivity(db, {
+                companyId: updated.companyId,
+                actorType: "system",
+                actorId: "auto-merge",
+                action: mergeResult.success ? "approval.auto_merge_completed" : "approval.auto_merge_failed",
+                entityType: "approval",
+                entityId: id,
+                details: {
+                  branch: mrPayload.branch,
+                  baseBranch: mrPayload.baseBranch,
+                  mergeCommitSha: mergeResult.mergeCommitSha ?? null,
+                  conflictDetails: mergeResult.conflictDetails ?? null,
+                },
+              });
             }
           } catch (err) {
-            logger.warn(
-              { err, approvalId: id },
-              "auto-merge failed after approval",
-            );
+            logger.warn({ err, approvalId: id }, "auto-merge failed after approval");
+            await logActivity(db, {
+              companyId: updated.companyId,
+              actorType: "system",
+              actorId: "auto-merge",
+              action: "approval.auto_merge_failed",
+              entityType: "approval",
+              entityId: id,
+              details: {
+                branch: mrPayload.branch,
+                baseBranch: mrPayload.baseBranch,
+                error: err instanceof Error ? err.message : String(err),
+              },
+            });
           }
         }
       }

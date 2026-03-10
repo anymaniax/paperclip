@@ -1,5 +1,7 @@
 import { Router } from "express";
 import type { Db } from "@paperclipai/db";
+import { issues } from "@paperclipai/db";
+import { eq } from "drizzle-orm";
 import {
   addApprovalCommentSchema,
   createApprovalSchema,
@@ -40,11 +42,30 @@ export function approvalRoutes(db: Db) {
   const projectsSvc = projectService(db);
   const strictSecretsMode = process.env.PAPERCLIP_SECRETS_STRICT_MODE === "true";
 
-  async function resolveRepoPath(approval: { type: string; payload: Record<string, unknown>; id: string }): Promise<string> {
+  async function resolveRepoPath(approval: { type: string; payload: Record<string, unknown>; id: string; companyId: string }): Promise<string> {
     const payload = approval.payload as Partial<MergeRequestPayload>;
-    if (payload.repoPath) return payload.repoPath;
 
     const linkedIssues = await issueApprovalsSvc.listIssuesForApproval(approval.id);
+
+    // Collect all registered workspace cwds for validation
+    const registeredCwds = new Set<string>();
+    for (const issue of linkedIssues) {
+      if (issue.projectId) {
+        const workspaces = await projectsSvc.listWorkspaces(issue.projectId);
+        for (const ws of workspaces) {
+          if (ws.cwd) registeredCwds.add(ws.cwd);
+        }
+      }
+    }
+
+    if (payload.repoPath) {
+      if (registeredCwds.size > 0 && !registeredCwds.has(payload.repoPath)) {
+        throw unprocessable(`repoPath "${payload.repoPath}" is not a registered project workspace`);
+      }
+      return payload.repoPath;
+    }
+
+    // Fall back to primary workspace cwd
     for (const issue of linkedIssues) {
       if (issue.projectId) {
         const project = await projectsSvc.getById(issue.projectId);
@@ -123,6 +144,40 @@ export function approvalRoutes(db: Db) {
       entityId: approval.id,
       details: { type: approval.type, issueIds: uniqueIssueIds },
     });
+
+    // Auto-approve + auto-merge for merge_request when project policy is auto_merge
+    if (approval.type === "merge_request") {
+      let mergeReviewPolicy = "required";
+      for (const issueId of uniqueIssueIds) {
+        const issue = await db
+          .select()
+          .from(issues)
+          .where(eq(issues.id, issueId))
+          .then((rows) => rows[0] ?? null);
+        if (issue?.projectId) {
+          const project = await projectsSvc.getById(issue.projectId);
+          if (project) {
+            mergeReviewPolicy = project.mergeReviewPolicy ?? "required";
+            break;
+          }
+        }
+      }
+
+      if (mergeReviewPolicy === "auto_merge") {
+        const { approval: approved } = await svc.approve(approval.id, "system:auto_merge", "Auto-approved per project auto_merge policy");
+        await logActivity(db, {
+          companyId,
+          actorType: "system",
+          actorId: "auto_merge",
+          action: "approval.auto_approved",
+          entityType: "approval",
+          entityId: approval.id,
+          details: { policy: "auto_merge" },
+        });
+        res.status(201).json(redactApprovalPayload(approved));
+        return;
+      }
+    }
 
     res.status(201).json(redactApprovalPayload(approval));
   });
