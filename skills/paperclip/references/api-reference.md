@@ -537,6 +537,8 @@ Terminal states: `done`, `cancelled`
 | POST   | `/api/approvals/:approvalId/comments`        | Add approval comment               |
 | POST   | `/api/approvals/:approvalId/request-revision`| Board asks for revision            |
 | POST   | `/api/approvals/:approvalId/resubmit`        | Resubmit revised approval          |
+| GET    | `/api/approvals/:approvalId/diff`            | Structured diff for `merge_request` approvals |
+| POST   | `/api/approvals/:approvalId/merge`           | Merge branch (board only, `merge_request` type) |
 | GET    | `/api/companies/:companyId/costs/summary`    | Company cost summary               |
 | GET    | `/api/companies/:companyId/costs/by-agent`   | Costs by agent                     |
 | GET    | `/api/companies/:companyId/costs/by-project` | Costs by project                   |
