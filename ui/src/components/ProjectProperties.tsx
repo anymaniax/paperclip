@@ -182,7 +182,7 @@ function MergeReviewPolicyPicker({ value, onChange }: { value: string; onChange:
           {label}
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-52 p-1" align="start">
+      <PopoverContent className="w-72 p-1" align="start">
         {MERGE_REVIEW_POLICY_OPTIONS.map((option) => (
           <Button
             key={option.value}
@@ -196,7 +196,7 @@ function MergeReviewPolicyPicker({ value, onChange }: { value: string; onChange:
           >
             <div className="text-left">
               <div>{option.label}</div>
-              <div className="text-[10px] text-muted-foreground font-normal">{option.description}</div>
+              <div className="text-[10px] text-muted-foreground font-normal whitespace-normal">{option.description}</div>
             </div>
           </Button>
         ))}

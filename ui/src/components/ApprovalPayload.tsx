@@ -81,13 +81,13 @@ export function MergeRequestPayload({ payload, approvalId }: { payload: Record<s
 
   return (
     <div className="mt-3 space-y-2 text-sm">
-      <div className="flex items-center gap-2 rounded-md bg-muted/40 px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2 rounded-md bg-muted/40 px-3 py-2">
         <GitBranch className="h-4 w-4 text-muted-foreground shrink-0" />
-        <span className="font-mono text-xs font-medium">{branch}</span>
+        <span className="font-mono text-xs font-medium break-all">{branch}</span>
         <span className="text-muted-foreground text-xs">&rarr;</span>
-        <span className="font-mono text-xs font-medium">{baseBranch}</span>
+        <span className="font-mono text-xs font-medium break-all">{baseBranch}</span>
         {commitSha && (
-          <span className="ml-auto font-mono text-[10px] text-muted-foreground">
+          <span className="sm:ml-auto font-mono text-[10px] text-muted-foreground">
             {commitSha.slice(0, 7)}
           </span>
         )}
@@ -99,7 +99,7 @@ export function MergeRequestPayload({ payload, approvalId }: { payload: Record<s
         </div>
       )}
       {filesChanged.length > 0 && (
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <FileCode className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
           <span className="text-xs text-muted-foreground">
             {filesChanged.length} file{filesChanged.length !== 1 ? "s" : ""} changed
@@ -107,7 +107,7 @@ export function MergeRequestPayload({ payload, approvalId }: { payload: Record<s
           {approvalId && (
             <Link
               to={`/approvals/${approvalId}`}
-              className="text-xs text-primary hover:underline ml-auto"
+              className="text-xs text-primary hover:underline sm:ml-auto"
             >
               Review diff
             </Link>
