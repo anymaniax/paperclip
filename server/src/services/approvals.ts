@@ -1,12 +1,19 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { approvalComments, approvals } from "@paperclipai/db";
+import type { MergeRequestPayload } from "@paperclipai/shared";
 import { notFound, unprocessable } from "../errors.js";
 import { agentService } from "./agents.js";
 import { notifyHireApproved } from "./hire-hook.js";
+import { gitMerge } from "./git-operations.js";
+import { issueApprovalService } from "./issue-approvals.js";
+import { projectService } from "./projects.js";
+import { logger } from "../middleware/logger.js";
 
 export function approvalService(db: Db) {
   const agentsSvc = agentService(db);
+  const issueApprovalsSvc = issueApprovalService(db);
+  const projectsSvc = projectService(db);
   const canResolveStatuses = new Set(["pending", "revision_requested"]);
   const resolvableStatuses = Array.from(canResolveStatuses);
   type ApprovalRecord = typeof approvals.$inferSelect;
@@ -136,6 +143,40 @@ export function approvalService(db: Db) {
             sourceId: id,
             approvedAt: now,
           }).catch(() => {});
+        }
+      }
+
+      // Auto-merge hook for merge_request approvals
+      if (applied && updated.type === "merge_request") {
+        const mrPayload = updated.payload as Partial<MergeRequestPayload>;
+        if (mrPayload.autoMergeOnApproval && mrPayload.branch && mrPayload.baseBranch) {
+          try {
+            let repoPath = mrPayload.repoPath;
+            if (!repoPath) {
+              const linkedIssues = await issueApprovalsSvc.listIssuesForApproval(id);
+              for (const issue of linkedIssues) {
+                if (issue.projectId) {
+                  const project = await projectsSvc.getById(issue.projectId);
+                  if (project?.primaryWorkspace?.cwd) {
+                    repoPath = project.primaryWorkspace.cwd;
+                    break;
+                  }
+                }
+              }
+            }
+            if (repoPath) {
+              const mergeResult = await gitMerge(repoPath, mrPayload.baseBranch, mrPayload.branch);
+              logger.info(
+                { approvalId: id, mergeResult },
+                "auto-merge triggered after approval",
+              );
+            }
+          } catch (err) {
+            logger.warn(
+              { err, approvalId: id },
+              "auto-merge failed after approval",
+            );
+          }
         }
       }
 

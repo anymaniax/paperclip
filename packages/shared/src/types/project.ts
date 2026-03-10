@@ -1,4 +1,4 @@
-import type { ProjectStatus } from "../constants.js";
+import type { MergeReviewPolicy, ProjectStatus } from "../constants.js";
 import type { ProjectExecutionWorkspacePolicy, WorkspaceRuntimeService } from "./workspace-runtime.js";
 
 export interface ProjectGoalRef {
@@ -36,6 +36,7 @@ export interface Project {
   targetDate: string | null;
   color: string | null;
   executionWorkspacePolicy: ProjectExecutionWorkspacePolicy | null;
+  mergeReviewPolicy: MergeReviewPolicy;
   workspaces: ProjectWorkspace[];
   primaryWorkspace: ProjectWorkspace | null;
   archivedAt: Date | null;

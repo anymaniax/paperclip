@@ -149,7 +149,7 @@ export const PROJECT_COLORS = [
   "#3b82f6", // blue
 ] as const;
 
-export const APPROVAL_TYPES = ["hire_agent", "approve_ceo_strategy"] as const;
+export const APPROVAL_TYPES = ["hire_agent", "approve_ceo_strategy", "merge_request"] as const;
 export type ApprovalType = (typeof APPROVAL_TYPES)[number];
 
 export const APPROVAL_STATUSES = [
@@ -160,6 +160,9 @@ export const APPROVAL_STATUSES = [
   "cancelled",
 ] as const;
 export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
+
+export const MERGE_REVIEW_POLICIES = ["required", "auto_merge", "disabled"] as const;
+export type MergeReviewPolicy = (typeof MERGE_REVIEW_POLICIES)[number];
 
 export const SECRET_PROVIDERS = [
   "local_encrypted",
