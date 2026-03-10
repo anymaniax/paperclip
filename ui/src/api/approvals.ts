@@ -1,6 +1,24 @@
 import type { Approval, ApprovalComment, Issue } from "@paperclipai/shared";
 import { api } from "./client";
 
+export interface DiffFile {
+  path: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  patch: string;
+}
+
+export interface DiffResult {
+  files: DiffFile[];
+}
+
+export interface MergeResult {
+  success: boolean;
+  mergeCommitSha?: string;
+  conflictDetails?: string;
+}
+
 export const approvalsApi = {
   list: (companyId: string, status?: string) =>
     api.get<Approval[]>(
@@ -21,4 +39,6 @@ export const approvalsApi = {
   addComment: (id: string, body: string) =>
     api.post<ApprovalComment>(`/approvals/${id}/comments`, { body }),
   listIssues: (id: string) => api.get<Issue[]>(`/approvals/${id}/issues`),
+  getDiff: (id: string) => api.get<DiffResult>(`/approvals/${id}/diff`),
+  merge: (id: string) => api.post<MergeResult>(`/approvals/${id}/merge`, {}),
 };
