@@ -35,6 +35,8 @@ import {
   ChevronDown,
   ChevronRight,
   EyeOff,
+  GitBranch,
+  GitMerge,
   Hexagon,
   ListTree,
   MessageSquare,
@@ -855,22 +857,39 @@ export function IssueDetail() {
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="border-t border-border divide-y divide-border">
-              {linkedApprovals.map((approval) => (
-                <Link
-                  key={approval.id}
-                  to={`/approvals/${approval.id}`}
-                  className="flex items-center justify-between px-3 py-2 text-xs hover:bg-accent/20 transition-colors"
-                >
-                  <div className="flex items-center gap-2">
-                    <StatusBadge status={approval.status} />
-                    <span className="font-medium">
-                      {approval.type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
-                    </span>
-                    <span className="font-mono text-muted-foreground">{approval.id.slice(0, 8)}</span>
-                  </div>
-                  <span className="text-muted-foreground">{relativeTime(approval.createdAt)}</span>
-                </Link>
-              ))}
+              {linkedApprovals.map((approval) => {
+                const approvalPayload = (approval.payload ?? {}) as Record<string, unknown>;
+                const isMR = approval.type === "merge_request";
+                return (
+                  <Link
+                    key={approval.id}
+                    to={`/approvals/${approval.id}`}
+                    className="flex items-center justify-between px-3 py-2 text-xs hover:bg-accent/20 transition-colors gap-2"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <StatusBadge status={approval.status} />
+                      {isMR ? (
+                        <GitMerge className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      ) : null}
+                      <span className="font-medium shrink-0">
+                        {approval.type.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                      </span>
+                      {isMR && typeof approvalPayload.branch === "string" && (
+                        <span className="hidden sm:inline-flex items-center gap-1 font-mono text-[10px] text-muted-foreground">
+                          <GitBranch className="h-3 w-3" />
+                          {approvalPayload.branch}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {isMR && (
+                        <span className="text-primary text-[11px] font-medium">Review diff</span>
+                      )}
+                      <span className="text-muted-foreground">{relativeTime(approval.createdAt)}</span>
+                    </div>
+                  </Link>
+                );
+              })}
             </div>
           </CollapsibleContent>
         </Collapsible>

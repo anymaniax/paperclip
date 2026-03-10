@@ -15,6 +15,17 @@ export interface Approval {
   updatedAt: Date;
 }
 
+export interface MergeRequestPayload {
+  branch: string;
+  baseBranch: string;
+  repoPath?: string;
+  diffSummary: string;
+  filesChanged: string[];
+  commitSha: string;
+  commitMessage: string;
+  autoMergeOnApproval?: boolean;
+}
+
 export interface ApprovalComment {
   id: string;
   companyId: string;
