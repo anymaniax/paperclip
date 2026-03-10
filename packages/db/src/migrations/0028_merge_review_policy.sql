@@ -1,0 +1,1 @@
+ALTER TABLE "projects" ADD COLUMN "merge_review_policy" text DEFAULT 'required' NOT NULL;

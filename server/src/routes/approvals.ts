@@ -1,23 +1,30 @@
 import { Router } from "express";
 import type { Db } from "@paperclipai/db";
+import { issues } from "@paperclipai/db";
+import { eq } from "drizzle-orm";
 import {
   addApprovalCommentSchema,
   createApprovalSchema,
   requestApprovalRevisionSchema,
   resolveApprovalSchema,
   resubmitApprovalSchema,
+  type MergeRequestPayload,
 } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
 import { logger } from "../middleware/logger.js";
 import {
   approvalService,
+  gitDiff,
+  gitMerge,
   heartbeatService,
   issueApprovalService,
   logActivity,
+  projectService,
   secretService,
 } from "../services/index.js";
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
 import { redactEventPayload } from "../redaction.js";
+import { unprocessable } from "../errors.js";
 
 function redactApprovalPayload<T extends { payload: Record<string, unknown> }>(approval: T): T {
   return {
@@ -32,7 +39,42 @@ export function approvalRoutes(db: Db) {
   const heartbeat = heartbeatService(db);
   const issueApprovalsSvc = issueApprovalService(db);
   const secretsSvc = secretService(db);
+  const projectsSvc = projectService(db);
   const strictSecretsMode = process.env.PAPERCLIP_SECRETS_STRICT_MODE === "true";
+
+  async function resolveRepoPath(approval: { type: string; payload: Record<string, unknown>; id: string; companyId: string }): Promise<string> {
+    const payload = approval.payload as Partial<MergeRequestPayload>;
+
+    const linkedIssues = await issueApprovalsSvc.listIssuesForApproval(approval.id);
+
+    // Collect all registered workspace cwds for validation
+    const registeredCwds = new Set<string>();
+    for (const issue of linkedIssues) {
+      if (issue.projectId) {
+        const workspaces = await projectsSvc.listWorkspaces(issue.projectId);
+        for (const ws of workspaces) {
+          if (ws.cwd) registeredCwds.add(ws.cwd);
+        }
+      }
+    }
+
+    if (payload.repoPath) {
+      if (registeredCwds.size > 0 && !registeredCwds.has(payload.repoPath)) {
+        throw unprocessable(`repoPath "${payload.repoPath}" is not a registered project workspace`);
+      }
+      return payload.repoPath;
+    }
+
+    // Fall back to primary workspace cwd
+    for (const issue of linkedIssues) {
+      if (issue.projectId) {
+        const project = await projectsSvc.getById(issue.projectId);
+        if (project?.primaryWorkspace?.cwd) return project.primaryWorkspace.cwd;
+      }
+    }
+
+    throw unprocessable("Cannot resolve repository path: no repoPath in payload and no linked issue project workspace");
+  }
 
   router.get("/companies/:companyId/approvals", async (req, res) => {
     const companyId = req.params.companyId as string;
@@ -102,6 +144,40 @@ export function approvalRoutes(db: Db) {
       entityId: approval.id,
       details: { type: approval.type, issueIds: uniqueIssueIds },
     });
+
+    // Auto-approve + auto-merge for merge_request when project policy is auto_merge
+    if (approval.type === "merge_request") {
+      let mergeReviewPolicy = "required";
+      for (const issueId of uniqueIssueIds) {
+        const issue = await db
+          .select()
+          .from(issues)
+          .where(eq(issues.id, issueId))
+          .then((rows) => rows[0] ?? null);
+        if (issue?.projectId) {
+          const project = await projectsSvc.getById(issue.projectId);
+          if (project) {
+            mergeReviewPolicy = project.mergeReviewPolicy ?? "required";
+            break;
+          }
+        }
+      }
+
+      if (mergeReviewPolicy === "auto_merge") {
+        const { approval: approved } = await svc.approve(approval.id, "system:auto_merge", "Auto-approved per project auto_merge policy");
+        await logActivity(db, {
+          companyId,
+          actorType: "system",
+          actorId: "auto_merge",
+          action: "approval.auto_approved",
+          entityType: "approval",
+          entityId: approval.id,
+          details: { policy: "auto_merge" },
+        });
+        res.status(201).json(redactApprovalPayload(approved));
+        return;
+      }
+    }
 
     res.status(201).json(redactApprovalPayload(approval));
   });
@@ -339,6 +415,101 @@ export function approvalRoutes(db: Db) {
     });
 
     res.status(201).json(comment);
+  });
+
+  // ── Merge-request endpoints ──────────────────────────────────────────
+
+  router.get("/approvals/:id/diff", async (req, res) => {
+    const id = req.params.id as string;
+    const approval = await svc.getById(id);
+    if (!approval) {
+      res.status(404).json({ error: "Approval not found" });
+      return;
+    }
+    assertCompanyAccess(req, approval.companyId);
+
+    if (approval.type !== "merge_request") {
+      res.status(422).json({ error: "Diff is only available for merge_request approvals" });
+      return;
+    }
+
+    const payload = approval.payload as Partial<MergeRequestPayload>;
+    if (!payload.branch || !payload.baseBranch) {
+      res.status(422).json({ error: "Approval payload missing branch or baseBranch" });
+      return;
+    }
+
+    const repoPath = await resolveRepoPath(approval);
+    const diff = await gitDiff(repoPath, payload.baseBranch, payload.branch);
+    res.json(diff);
+  });
+
+  router.post("/approvals/:id/merge", async (req, res) => {
+    assertBoard(req);
+    const id = req.params.id as string;
+    const approval = await svc.getById(id);
+    if (!approval) {
+      res.status(404).json({ error: "Approval not found" });
+      return;
+    }
+    assertCompanyAccess(req, approval.companyId);
+
+    if (approval.type !== "merge_request") {
+      res.status(422).json({ error: "Merge is only available for merge_request approvals" });
+      return;
+    }
+
+    // Resolve project and check merge review policy
+    const linkedIssues = await issueApprovalsSvc.listIssuesForApproval(id);
+    let mergeReviewPolicy = "required";
+    for (const issue of linkedIssues) {
+      if (issue.projectId) {
+        const project = await projectsSvc.getById(issue.projectId);
+        if (project) {
+          mergeReviewPolicy = project.mergeReviewPolicy ?? "required";
+          break;
+        }
+      }
+    }
+
+    // Policy enforcement: if required, must be approved first
+    if (mergeReviewPolicy === "required" && approval.status !== "approved") {
+      res.status(422).json({ error: "Merge requires approval first (project policy: required)" });
+      return;
+    }
+
+    if (mergeReviewPolicy === "disabled") {
+      res.status(422).json({ error: "Merge-request approvals are disabled for this project" });
+      return;
+    }
+
+    const payload = approval.payload as Partial<MergeRequestPayload>;
+    if (!payload.branch || !payload.baseBranch) {
+      res.status(422).json({ error: "Approval payload missing branch or baseBranch" });
+      return;
+    }
+
+    const repoPath = await resolveRepoPath(approval);
+    const result = await gitMerge(repoPath, payload.baseBranch, payload.branch);
+
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId: approval.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      action: result.success ? "approval.merge_completed" : "approval.merge_failed",
+      entityType: "approval",
+      entityId: approval.id,
+      details: {
+        branch: payload.branch,
+        baseBranch: payload.baseBranch,
+        mergeCommitSha: result.mergeCommitSha ?? null,
+        conflictDetails: result.conflictDetails ?? null,
+      },
+    });
+
+    res.json(result);
   });
 
   return router;

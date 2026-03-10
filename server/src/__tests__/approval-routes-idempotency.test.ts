@@ -29,7 +29,14 @@ const mockSecretService = vi.hoisted(() => ({
   normalizeHireApprovalPayloadForPersistence: vi.fn(),
 }));
 
+const mockProjectService = vi.hoisted(() => ({
+  getById: vi.fn(),
+  listWorkspaces: vi.fn(),
+}));
+
 const mockLogActivity = vi.hoisted(() => vi.fn());
+const mockGitDiff = vi.hoisted(() => vi.fn());
+const mockGitMerge = vi.hoisted(() => vi.fn());
 
 vi.mock("../services/index.js", () => ({
   approvalService: () => mockApprovalService,
@@ -37,6 +44,9 @@ vi.mock("../services/index.js", () => ({
   issueApprovalService: () => mockIssueApprovalService,
   logActivity: mockLogActivity,
   secretService: () => mockSecretService,
+  projectService: () => mockProjectService,
+  gitDiff: mockGitDiff,
+  gitMerge: mockGitMerge,
 }));
 
 function createApp() {
