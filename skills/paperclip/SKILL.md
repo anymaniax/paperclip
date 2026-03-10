@@ -238,6 +238,9 @@ PATCH /api/agents/{agentId}/instructions-path
 | List agents          | `GET /api/companies/:companyId/agents`                                                     |
 | Dashboard            | `GET /api/companies/:companyId/dashboard`                                                  |
 | Search issues        | `GET /api/companies/:companyId/issues?q=search+term`                                       |
+| Create approval      | `POST /api/companies/:companyId/approvals`                                                 |
+| Get approval diff    | `GET /api/approvals/:approvalId/diff`                                                      |
+| Merge branch         | `POST /api/approvals/:approvalId/merge` (board only)                                       |
 
 ## Searching Issues
 
@@ -285,6 +288,91 @@ pnpm paperclipai issue update <issue-id> --assignee-agent-id <other-agent-id> --
 5. Cleanup: mark temporary issues done/cancelled with a clear note.
 
 If you use direct `curl` during these tests, include `X-Paperclip-Run-Id` on all mutating issue requests whenever running inside a heartbeat.
+
+## Merge-Request Approval Workflow
+
+When you finish code work on a feature branch, use the merge-request approval flow to let the board review and merge your changes from the Paperclip UI.
+
+### Before you start
+
+Check the project's `mergeReviewPolicy` (returned in `GET /api/issues/:id` → `project.mergeReviewPolicy`):
+
+| Policy | Behavior |
+| --- | --- |
+| `required` (default) | Board must approve before merge. You create the approval and wait. |
+| `auto_merge` | Approval is auto-approved on creation and code merges automatically. No board review needed. |
+| `disabled` | No merge-request approvals. Use normal git workflow (push, PR, etc.). |
+
+If `disabled`, skip this flow entirely.
+
+### Step-by-step
+
+1. **Commit all changes** to your feature branch. Do not merge to the base branch yourself.
+
+2. **Create the approval** with `issueIds` to link it to your task:
+
+```
+POST /api/companies/{companyId}/approvals
+Headers: Authorization: Bearer $PAPERCLIP_API_KEY, X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID
+{
+  "type": "merge_request",
+  "requestedByAgentId": "{your-agent-id}",
+  "issueIds": ["{issueId}"],
+  "payload": {
+    "branch": "my-feature-branch",
+    "baseBranch": "master",
+    "diffSummary": "Added user login endpoint with JWT auth",
+    "filesChanged": ["server/src/routes/auth.ts", "server/src/services/auth.ts"],
+    "commitSha": "abc123def",
+    "commitMessage": "feat: add user login endpoint",
+    "autoMergeOnApproval": false
+  }
+}
+```
+
+**Payload fields:**
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `branch` | yes | Feature branch name |
+| `baseBranch` | yes | Target branch (usually `master` or `main`) |
+| `diffSummary` | yes | Human-readable summary of changes |
+| `filesChanged` | yes | Array of changed file paths |
+| `commitSha` | yes | HEAD commit SHA on the feature branch |
+| `commitMessage` | yes | Commit message or summary |
+| `repoPath` | no | Absolute path to the repo. Falls back to the linked project's primary workspace `cwd`. |
+| `autoMergeOnApproval` | no | If `true`, auto-merges when board approves (no separate merge step needed). |
+
+3. **Comment on your issue** with a link to the approval:
+
+```
+POST /api/issues/{issueId}/comments
+Headers: X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID
+{ "body": "## Ready for review\n\n- Branch: `my-feature-branch` → `master`\n- Approval: [view diff](/<prefix>/approvals/{approvalId})\n- Files changed: 2" }
+```
+
+4. **Set issue status to `in_review`:**
+
+```
+PATCH /api/issues/{issueId}
+Headers: X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID
+{ "status": "in_review" }
+```
+
+5. **Exit the heartbeat.** The board reviews the diff in the Paperclip UI and approves/rejects.
+
+### When approval is resolved
+
+You'll be woken with `PAPERCLIP_APPROVAL_ID` and `PAPERCLIP_APPROVAL_STATUS` set.
+
+- **Approved (and merged):** Close the issue as `done`.
+- **Approved (not yet merged, `autoMergeOnApproval` was `false`):** The board triggers merge from the UI. You'll be woken again after merge completes. Close the issue.
+- **Revision requested:** Read the approval comments (`GET /api/approvals/{approvalId}/comments`), address feedback, update your branch, and resubmit with `POST /api/approvals/{approvalId}/resubmit` with updated payload.
+- **Rejected:** Comment on the issue explaining the outcome. Mark as `done` or `cancelled` per context.
+
+### Auto-merge policy
+
+If the project uses `auto_merge` policy, the approval is automatically approved on creation and the merge happens immediately. You still create the approval (for audit trail), but the board doesn't need to act. Comment on the issue with the result and close it.
 
 ## Full Reference
 
