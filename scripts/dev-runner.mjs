@@ -38,8 +38,9 @@ if (tailscaleAuth) {
   env.PAPERCLIP_DEPLOYMENT_MODE = "authenticated";
   env.PAPERCLIP_DEPLOYMENT_EXPOSURE = "private";
   env.PAPERCLIP_AUTH_BASE_URL_MODE = "auto";
+  env.PAPERCLIP_AUTH_DISABLE_SIGN_UP = "true";
   env.HOST = "0.0.0.0";
-  console.log("[paperclip] dev mode: authenticated/private (tailscale-friendly) on 0.0.0.0");
+  console.log("[paperclip] dev mode: authenticated/private (tailscale-friendly) on 0.0.0.0, sign-up disabled");
 } else {
   console.log("[paperclip] dev mode: local_trusted (default)");
 }
