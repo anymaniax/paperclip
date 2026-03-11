@@ -14,7 +14,7 @@ import { PageSkeleton } from "../components/PageSkeleton";
 import { DiffViewer } from "../components/DiffViewer";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { CheckCircle2, ChevronRight, GitBranch, GitMerge, Hexagon, Sparkles, AlertTriangle } from "lucide-react";
+import { Check, CheckCircle2, ChevronRight, GitBranch, GitMerge, Hexagon, Sparkles, AlertTriangle } from "lucide-react";
 import type { ApprovalComment } from "@paperclipai/shared";
 import { MarkdownBody } from "../components/MarkdownBody";
 import type { MergeResult } from "../api/approvals";
@@ -109,7 +109,7 @@ export function ApprovalDetail() {
     }
   };
 
-  const approveMutation = useMutation({
+  const { mutate: approveOnly, isPending: isApproving } = useMutation({
     mutationFn: () => approvalsApi.approve(approvalId!),
     onSuccess: () => {
       setError(null);
@@ -135,7 +135,7 @@ export function ApprovalDetail() {
       setMergeResult(result);
       refresh();
       if (result.success) {
-        navigate(`/approvals/${approvalId}?resolved=approved`, { replace: true });
+        navigate(`/approvals/${approvalId}?resolved=approved&merged=true`, { replace: true });
       }
     },
     onError: (err) => setError(err instanceof Error ? err.message : "Approve & merge failed"),
@@ -224,6 +224,7 @@ export function ApprovalDetail() {
   const isActionable = approval.status === "pending" || approval.status === "revision_requested";
   const TypeIcon = typeIcon[approval.type] ?? defaultTypeIcon;
   const showApprovedBanner = searchParams.get("resolved") === "approved" && approval.status === "approved";
+  const wasMerged = searchParams.get("merged") === "true";
   const primaryLinkedIssue = linkedIssues?.[0] ?? null;
   const resolvedCta =
     primaryLinkedIssue
@@ -258,12 +259,16 @@ export function ApprovalDetail() {
               </div>
               <div>
                 <p className="text-sm text-green-800 dark:text-green-100 font-medium">
-                  {isMergeRequest ? "Approved & merged" : "Approval confirmed"}
+                  {isMergeRequest && wasMerged
+                    ? "Approved & merged"
+                    : "Approval confirmed"}
                 </p>
                 <p className="text-xs text-green-700 dark:text-green-200/90">
-                  {isMergeRequest
+                  {isMergeRequest && wasMerged
                     ? "Code has been merged successfully."
-                    : "Requesting agent was notified to review this approval and linked issues."}
+                    : isMergeRequest
+                      ? "Approved without merge. You can merge separately when ready."
+                      : "Requesting agent was notified to review this approval and linked issues."}
                 </p>
               </div>
             </div>
@@ -413,8 +418,8 @@ export function ApprovalDetail() {
               <Button
                 size="sm"
                 className="bg-green-700 hover:bg-green-600 text-white"
-                onClick={() => approveMutation.mutate()}
-                disabled={approveMutation.isPending}
+                onClick={() => approveOnly()}
+                disabled={isApproving}
               >
                 Approve
               </Button>
@@ -432,9 +437,19 @@ export function ApprovalDetail() {
             <>
               <Button
                 size="sm"
+                variant="outline"
+                className="border-green-600 text-green-700 hover:bg-green-50 dark:border-green-500 dark:text-green-400 dark:hover:bg-green-950/30"
+                onClick={() => approveOnly()}
+                disabled={isApproving || isApproveAndMerging}
+              >
+                <Check className="h-3.5 w-3.5 mr-1.5" />
+                {isApproving ? "Approving\u2026" : "Approve"}
+              </Button>
+              <Button
+                size="sm"
                 className="bg-green-700 hover:bg-green-600 text-white"
                 onClick={() => approveAndMerge()}
-                disabled={isApproveAndMerging}
+                disabled={isApproveAndMerging || isApproving}
               >
                 <GitMerge className="h-3.5 w-3.5 mr-1.5" />
                 {isApproveAndMerging ? "Merging\u2026" : "Approve & Merge"}
