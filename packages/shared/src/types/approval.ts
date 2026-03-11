@@ -1,5 +1,11 @@
 import type { ApprovalStatus, ApprovalType } from "../constants.js";
 
+export interface ApprovalLinkedProject {
+  id: string;
+  name: string;
+  urlKey: string | null;
+}
+
 export interface Approval {
   id: string;
   companyId: string;
@@ -13,6 +19,7 @@ export interface Approval {
   decidedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  linkedProject?: ApprovalLinkedProject | null;
 }
 
 export interface MergeRequestPayload {

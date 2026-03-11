@@ -1,11 +1,12 @@
 import { Router } from "express";
 import fs from "node:fs";
 import type { Db } from "@paperclipai/db";
-import { issues } from "@paperclipai/db";
-import { eq } from "drizzle-orm";
+import { issues, issueApprovals, projects } from "@paperclipai/db";
+import { eq, inArray } from "drizzle-orm";
 import {
   addApprovalCommentSchema,
   createApprovalSchema,
+  deriveProjectUrlKey,
   requestApprovalRevisionSchema,
   resolveApprovalSchema,
   resubmitApprovalSchema,
@@ -84,7 +85,48 @@ export function approvalRoutes(db: Db) {
     assertCompanyAccess(req, companyId);
     const status = req.query.status as string | undefined;
     const result = await svc.list(companyId, status);
-    res.json(result.map((approval) => redactApprovalPayload(approval)));
+
+    // Batch-resolve linked projects for all approvals
+    const approvalIds = result.map((a) => a.id);
+    const approvalProjectMap = new Map<string, { id: string; name: string; urlKey: string }>();
+
+    if (approvalIds.length > 0) {
+      const links = await db
+        .select({
+          approvalId: issueApprovals.approvalId,
+          projectId: issues.projectId,
+        })
+        .from(issueApprovals)
+        .innerJoin(issues, eq(issueApprovals.issueId, issues.id))
+        .where(inArray(issueApprovals.approvalId, approvalIds));
+
+      const projectIds = [...new Set(links.map((l) => l.projectId).filter((id): id is string => !!id))];
+
+      if (projectIds.length > 0) {
+        const projectRows = await db
+          .select({ id: projects.id, name: projects.name })
+          .from(projects)
+          .where(inArray(projects.id, projectIds));
+
+        const projectById = new Map(
+          projectRows.map((p) => [p.id, { id: p.id, name: p.name, urlKey: deriveProjectUrlKey(p.name, p.id) }]),
+        );
+
+        for (const link of links) {
+          if (link.projectId && !approvalProjectMap.has(link.approvalId)) {
+            const proj = projectById.get(link.projectId);
+            if (proj) approvalProjectMap.set(link.approvalId, proj);
+          }
+        }
+      }
+    }
+
+    res.json(
+      result.map((approval) => ({
+        ...redactApprovalPayload(approval),
+        linkedProject: approvalProjectMap.get(approval.id) ?? null,
+      })),
+    );
   });
 
   router.get("/approvals/:id", async (req, res) => {
