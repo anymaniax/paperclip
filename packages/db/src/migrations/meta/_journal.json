@@ -204,6 +204,13 @@
       "when": 1773364800000,
       "tag": "0028_merge_review_policy",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1773451200000,
+      "tag": "0029_inline_review_comments",
+      "breakpoints": true
     }
   ]
 }

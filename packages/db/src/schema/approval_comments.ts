@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, index, integer } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 import { approvals } from "./approvals.js";
 import { agents } from "./agents.js";
@@ -12,6 +12,9 @@ export const approvalComments = pgTable(
     authorAgentId: uuid("author_agent_id").references(() => agents.id),
     authorUserId: text("author_user_id"),
     body: text("body").notNull(),
+    filePath: text("file_path"),
+    lineNumber: integer("line_number"),
+    side: text("side"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -21,6 +24,11 @@ export const approvalComments = pgTable(
     approvalCreatedIdx: index("approval_comments_approval_created_idx").on(
       table.approvalId,
       table.createdAt,
+    ),
+    approvalFileLineIdx: index("approval_comments_approval_file_line_idx").on(
+      table.approvalId,
+      table.filePath,
+      table.lineNumber,
     ),
   }),
 );

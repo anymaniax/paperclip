@@ -57,6 +57,9 @@ export type ResubmitApproval = z.infer<typeof resubmitApprovalSchema>;
 
 export const addApprovalCommentSchema = z.object({
   body: z.string().min(1),
+  filePath: z.string().optional(),
+  lineNumber: z.number().int().positive().optional(),
+  side: z.enum(["old", "new"]).optional(),
 });
 
 export type AddApprovalComment = z.infer<typeof addApprovalCommentSchema>;

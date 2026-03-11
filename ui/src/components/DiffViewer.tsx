@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import {
   ChevronRight,
   File,
@@ -8,6 +8,9 @@ import {
   FileDiff,
   Columns2,
   AlignJustify,
+  MessageSquarePlus,
+  Send,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -16,8 +19,13 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { createHighlighter, type BundledLanguage, type Highlighter, type ThemedToken } from "shiki";
+import type { ApprovalComment } from "@paperclipai/shared";
 import type { DiffFile } from "../api/approvals";
+import { Identity } from "./Identity";
+import { MarkdownBody } from "./MarkdownBody";
 
 // ── View mode ──────────────────────────────────────────────
 
@@ -416,45 +424,194 @@ const pairLinesForSplit = (lines: DiffLineProps[]): SplitRow[] => {
   return rows;
 };
 
+// ── Inline comment types ──────────────────────────────────
+
+interface ActiveCommentLine {
+  filePath: string;
+  lineNumber: number;
+  side: "old" | "new";
+}
+
+// ── Inline comment form ──────────────────────────────────
+
+const InlineCommentForm = ({
+  onSubmit,
+  onCancel,
+  isPending,
+}: {
+  onSubmit: (body: string) => void;
+  onCancel: () => void;
+  isPending: boolean;
+}) => {
+  const [body, setBody] = useState("");
+
+  return (
+    <div className="border border-blue-300 dark:border-blue-700/50 bg-blue-50/50 dark:bg-blue-950/20 rounded-md mx-2 my-1 p-2 space-y-2">
+      <Textarea
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+        placeholder="Write a review comment..."
+        rows={2}
+        className="text-sm"
+        autoFocus
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onCancel();
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && body.trim()) {
+            onSubmit(body.trim());
+          }
+        }}
+      />
+      <div className="flex items-center justify-end gap-2">
+        <Button size="sm" variant="ghost" onClick={onCancel} disabled={isPending}>
+          <X className="h-3 w-3 mr-1" />
+          Cancel
+        </Button>
+        <Button
+          size="sm"
+          onClick={() => onSubmit(body.trim())}
+          disabled={!body.trim() || isPending}
+        >
+          <Send className="h-3 w-3 mr-1" />
+          {isPending ? "Posting..." : "Comment"}
+        </Button>
+      </div>
+    </div>
+  );
+};
+
+// ── Inline comment block ──────────────────────────────────
+
+const InlineCommentBlock = ({
+  comments,
+  agentNameById,
+}: {
+  comments: ApprovalComment[];
+  agentNameById?: Map<string, string>;
+}) => (
+  <div className="border-l-2 border-blue-400 dark:border-blue-600 bg-blue-50/30 dark:bg-blue-950/10 mx-2 my-1 rounded-r-md">
+    {comments.map((comment) => (
+      <div key={comment.id} className="px-3 py-2 border-b border-border/30 last:border-b-0">
+        <div className="flex items-center justify-between mb-1">
+          {comment.authorAgentId ? (
+            <Identity
+              name={agentNameById?.get(comment.authorAgentId) ?? comment.authorAgentId.slice(0, 8)}
+              size="sm"
+            />
+          ) : (
+            <Identity name="Board" size="sm" />
+          )}
+          <span className="text-[10px] text-muted-foreground">
+            {new Date(comment.createdAt).toLocaleString()}
+          </span>
+        </div>
+        <MarkdownBody className="text-xs">{comment.body}</MarkdownBody>
+      </div>
+    ))}
+  </div>
+);
+
+// ── Comment gutter button ─────────────────────────────────
+
+const CommentGutterButton = ({
+  onClick,
+}: {
+  onClick: () => void;
+}) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 z-10 opacity-0 group-hover/line:opacity-100 transition-opacity bg-blue-500 hover:bg-blue-600 text-white rounded-full h-5 w-5 flex items-center justify-center shadow-sm"
+    title="Add review comment"
+  >
+    <MessageSquarePlus className="h-3 w-3" />
+  </button>
+);
+
 // ── Unified diff line ──────────────────────────────────────
 
 const UnifiedDiffLine = ({
   line,
   highlight,
+  filePath,
+  onAddCommentClick,
+  inlineComments,
+  activeComment,
+  onSubmitComment,
+  onCancelComment,
+  isCommentPending,
+  agentNameById,
 }: {
   line: DiffLineProps;
   highlight: HighlightedFile | null;
+  filePath?: string;
+  onAddCommentClick?: (lineNumber: number, side: "old" | "new") => void;
+  inlineComments?: ApprovalComment[];
+  activeComment?: ActiveCommentLine | null;
+  onSubmitComment?: (body: string) => void;
+  onCancelComment?: () => void;
+  isCommentPending?: boolean;
+  agentNameById?: Map<string, string>;
 }) => {
   const tokens = getLineTokens(line, highlight);
+  const lineNumber = line.type === "deletion" ? line.oldLineNo : line.newLineNo;
+  const side: "old" | "new" = line.type === "deletion" ? "old" : "new";
+  const canComment = onAddCommentClick && line.type !== "header" && lineNumber != null;
+
+  const isActiveCommentLine =
+    activeComment &&
+    filePath &&
+    activeComment.filePath === filePath &&
+    activeComment.lineNumber === lineNumber &&
+    activeComment.side === side;
+
+  const lineComments =
+    inlineComments?.filter(
+      (c) => c.lineNumber === lineNumber && c.side === side,
+    ) ?? [];
 
   return (
-    <div className={cn("flex text-xs font-mono leading-5", lineStyles[line.type])}>
-      <span
-        className={cn(
-          "w-8 sm:w-10 shrink-0 text-right px-1 select-none border-r border-border/40",
-          lineGutterStyles[line.type],
+    <>
+      <div className={cn("flex text-xs font-mono leading-5 relative", canComment && "group/line", lineStyles[line.type])}>
+        {canComment && (
+          <CommentGutterButton onClick={() => onAddCommentClick(lineNumber!, side)} />
         )}
-      >
-        {line.type === "header"
-          ? "..."
-          : line.type === "deletion"
-            ? line.oldLineNo
-            : line.type === "addition"
-              ? ""
-              : line.oldLineNo}
-      </span>
-      <span
-        className={cn(
-          "w-8 sm:w-10 shrink-0 text-right px-1 select-none border-r border-border/40",
-          lineGutterStyles[line.type],
-        )}
-      >
-        {line.type === "header" ? "..." : line.type === "deletion" ? "" : line.newLineNo}
-      </span>
-      <span className="pl-2 whitespace-pre flex-1">
-        <LineContent line={line} tokens={tokens} />
-      </span>
-    </div>
+        <span
+          className={cn(
+            "w-8 sm:w-10 shrink-0 text-right px-1 select-none border-r border-border/40",
+            lineGutterStyles[line.type],
+          )}
+        >
+          {line.type === "header"
+            ? "..."
+            : line.type === "deletion"
+              ? line.oldLineNo
+              : line.type === "addition"
+                ? ""
+                : line.oldLineNo}
+        </span>
+        <span
+          className={cn(
+            "w-8 sm:w-10 shrink-0 text-right px-1 select-none border-r border-border/40",
+            lineGutterStyles[line.type],
+          )}
+        >
+          {line.type === "header" ? "..." : line.type === "deletion" ? "" : line.newLineNo}
+        </span>
+        <span className="pl-2 whitespace-pre flex-1">
+          <LineContent line={line} tokens={tokens} />
+        </span>
+      </div>
+      {lineComments.length > 0 && (
+        <InlineCommentBlock comments={lineComments} agentNameById={agentNameById} />
+      )}
+      {isActiveCommentLine && onSubmitComment && onCancelComment && (
+        <InlineCommentForm
+          onSubmit={onSubmitComment}
+          onCancel={onCancelComment}
+          isPending={isCommentPending ?? false}
+        />
+      )}
+    </>
   );
 };
 
@@ -500,9 +657,25 @@ const SplitDiffHalf = ({
 const SplitDiffRow = ({
   row,
   highlight,
+  filePath,
+  onAddCommentClick,
+  inlineComments,
+  activeComment,
+  onSubmitComment,
+  onCancelComment,
+  isCommentPending,
+  agentNameById,
 }: {
   row: SplitRow;
   highlight: HighlightedFile | null;
+  filePath?: string;
+  onAddCommentClick?: (lineNumber: number, side: "old" | "new") => void;
+  inlineComments?: ApprovalComment[];
+  activeComment?: ActiveCommentLine | null;
+  onSubmitComment?: (body: string) => void;
+  onCancelComment?: () => void;
+  isCommentPending?: boolean;
+  agentNameById?: Map<string, string>;
 }) => {
   if (row.isHeader && row.left) {
     return (
@@ -515,12 +688,74 @@ const SplitDiffRow = ({
   const leftTokens = row.left ? getLineTokens(row.left, highlight) : null;
   const rightTokens = row.right ? getLineTokens(row.right, highlight) : null;
 
+  // Check for inline comments on left (old) and right (new) sides
+  const leftLineNo = row.left?.oldLineNo;
+  const rightLineNo = row.right?.newLineNo;
+  const leftComments = inlineComments?.filter(
+    (c) => c.lineNumber === leftLineNo && c.side === "old",
+  ) ?? [];
+  const rightComments = inlineComments?.filter(
+    (c) => c.lineNumber === rightLineNo && c.side === "new",
+  ) ?? [];
+  const hasComments = leftComments.length > 0 || rightComments.length > 0;
+
+  const isLeftActive =
+    activeComment &&
+    filePath &&
+    activeComment.filePath === filePath &&
+    activeComment.lineNumber === leftLineNo &&
+    activeComment.side === "old";
+  const isRightActive =
+    activeComment &&
+    filePath &&
+    activeComment.filePath === filePath &&
+    activeComment.lineNumber === rightLineNo &&
+    activeComment.side === "new";
+  const hasActiveForm = isLeftActive || isRightActive;
+
+  const canCommentLeft = onAddCommentClick && row.left && row.left.type !== "header" && leftLineNo != null;
+  const canCommentRight = onAddCommentClick && row.right && row.right.type !== "header" && rightLineNo != null;
+
   return (
-    <div className="flex">
-      <SplitDiffHalf line={row.left} side="left" tokens={leftTokens} />
-      <div className="w-px bg-border/40 shrink-0" />
-      <SplitDiffHalf line={row.right} side="right" tokens={rightTokens} />
-    </div>
+    <>
+      <div className="flex">
+        <div className={cn("w-1/2 relative", canCommentLeft && "group/line")}>
+          {canCommentLeft && (
+            <CommentGutterButton onClick={() => onAddCommentClick(leftLineNo!, "old")} />
+          )}
+          <SplitDiffHalf line={row.left} side="left" tokens={leftTokens} />
+        </div>
+        <div className="w-px bg-border/40 shrink-0" />
+        <div className={cn("w-1/2 relative", canCommentRight && "group/line")}>
+          {canCommentRight && (
+            <CommentGutterButton onClick={() => onAddCommentClick(rightLineNo!, "new")} />
+          )}
+          <SplitDiffHalf line={row.right} side="right" tokens={rightTokens} />
+        </div>
+      </div>
+      {hasComments && (
+        <div className="flex">
+          <div className="w-1/2">
+            {leftComments.length > 0 && (
+              <InlineCommentBlock comments={leftComments} agentNameById={agentNameById} />
+            )}
+          </div>
+          <div className="w-px bg-border/40 shrink-0" />
+          <div className="w-1/2">
+            {rightComments.length > 0 && (
+              <InlineCommentBlock comments={rightComments} agentNameById={agentNameById} />
+            )}
+          </div>
+        </div>
+      )}
+      {hasActiveForm && onSubmitComment && onCancelComment && (
+        <InlineCommentForm
+          onSubmit={onSubmitComment}
+          onCancel={onCancelComment}
+          isPending={isCommentPending ?? false}
+        />
+      )}
+    </>
   );
 };
 
@@ -545,6 +780,9 @@ interface FileDiffSectionProps {
   viewMode: ViewMode;
   highlighter: Highlighter | null;
   isDark: boolean;
+  inlineComments?: ApprovalComment[];
+  onAddComment?: (filePath: string, lineNumber: number, side: "old" | "new", body: string) => Promise<void>;
+  agentNameById?: Map<string, string>;
 }
 
 const FileDiffSection = ({
@@ -553,8 +791,13 @@ const FileDiffSection = ({
   viewMode,
   highlighter,
   isDark,
+  inlineComments,
+  onAddComment,
+  agentNameById,
 }: FileDiffSectionProps) => {
   const [open, setOpen] = useState(defaultOpen);
+  const [activeComment, setActiveComment] = useState<ActiveCommentLine | null>(null);
+  const [isCommentPending, setIsCommentPending] = useState(false);
   const lines = useMemo(() => parsePatch(file.patch), [file.patch]);
   const splitRows = useMemo(
     () => (viewMode === "split" ? pairLinesForSplit(lines) : []),
@@ -562,6 +805,39 @@ const FileDiffSection = ({
   );
   const highlight = useFileHighlight(lines, file.path, highlighter, isDark);
   const Icon = statusIcon[file.status] ?? FileEdit;
+
+  const fileComments = useMemo(
+    () => inlineComments?.filter((c) => c.filePath === file.path) ?? [],
+    [inlineComments, file.path],
+  );
+
+  const commentCount = fileComments.length;
+
+  const handleAddCommentClick = useCallback(
+    (lineNumber: number, side: "old" | "new") => {
+      if (!onAddComment) return;
+      setActiveComment({ filePath: file.path, lineNumber, side });
+    },
+    [onAddComment, file.path],
+  );
+
+  const handleSubmitComment = useCallback(
+    async (body: string) => {
+      if (!onAddComment || !activeComment) return;
+      setIsCommentPending(true);
+      try {
+        await onAddComment(activeComment.filePath, activeComment.lineNumber, activeComment.side, body);
+        setActiveComment(null);
+      } finally {
+        setIsCommentPending(false);
+      }
+    },
+    [onAddComment, activeComment],
+  );
+
+  const handleCancelComment = useCallback(() => {
+    setActiveComment(null);
+  }, []);
 
   return (
     <Collapsible
@@ -587,6 +863,12 @@ const FileDiffSection = ({
           <span className="font-medium">{fileName(file.path)}</span>
         </span>
         <span className="ml-auto flex items-center gap-2 text-xs shrink-0">
+          {commentCount > 0 && (
+            <span className="text-blue-600 dark:text-blue-400 font-medium flex items-center gap-0.5">
+              <MessageSquarePlus className="h-3 w-3" />
+              {commentCount}
+            </span>
+          )}
           {file.additions > 0 && (
             <span className="text-green-600 dark:text-green-400 font-medium">
               +{file.additions}
@@ -605,11 +887,35 @@ const FileDiffSection = ({
             <div className="w-fit min-w-full">
               {viewMode === "unified" ? (
                 lines.map((line, i) => (
-                  <UnifiedDiffLine key={i} line={line} highlight={highlight} />
+                  <UnifiedDiffLine
+                    key={i}
+                    line={line}
+                    highlight={highlight}
+                    filePath={file.path}
+                    onAddCommentClick={onAddComment ? handleAddCommentClick : undefined}
+                    inlineComments={fileComments}
+                    activeComment={activeComment}
+                    onSubmitComment={handleSubmitComment}
+                    onCancelComment={handleCancelComment}
+                    isCommentPending={isCommentPending}
+                    agentNameById={agentNameById}
+                  />
                 ))
               ) : (
                 splitRows.map((row, i) => (
-                  <SplitDiffRow key={i} row={row} highlight={highlight} />
+                  <SplitDiffRow
+                    key={i}
+                    row={row}
+                    highlight={highlight}
+                    filePath={file.path}
+                    onAddCommentClick={onAddComment ? handleAddCommentClick : undefined}
+                    inlineComments={fileComments}
+                    activeComment={activeComment}
+                    onSubmitComment={handleSubmitComment}
+                    onCancelComment={handleCancelComment}
+                    isCommentPending={isCommentPending}
+                    agentNameById={agentNameById}
+                  />
                 ))
               )}
             </div>
@@ -626,6 +932,9 @@ const FileDiffSection = ({
 
 interface DiffViewerProps {
   files: DiffFile[];
+  inlineComments?: ApprovalComment[];
+  onAddComment?: (filePath: string, lineNumber: number, side: "old" | "new", body: string) => Promise<void>;
+  agentNameById?: Map<string, string>;
 }
 
 const useIsMobile = (breakpoint = 640): boolean => {
@@ -642,7 +951,7 @@ const useIsMobile = (breakpoint = 640): boolean => {
   return isMobile;
 };
 
-export const DiffViewer = ({ files }: DiffViewerProps) => {
+export const DiffViewer = ({ files, inlineComments, onAddComment, agentNameById }: DiffViewerProps) => {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const isMobile = useIsMobile();
   const [viewMode, setViewMode] = useState<ViewMode>("unified");
@@ -658,6 +967,7 @@ export const DiffViewer = ({ files }: DiffViewerProps) => {
 
   const totalAdditions = files.reduce((sum, f) => sum + f.additions, 0);
   const totalDeletions = files.reduce((sum, f) => sum + f.deletions, 0);
+  const totalInlineComments = inlineComments?.length ?? 0;
 
   const scrollToFile = (path: string) => {
     setSelectedFile(path);
@@ -674,10 +984,16 @@ export const DiffViewer = ({ files }: DiffViewerProps) => {
             {files.length} file{files.length !== 1 ? "s" : ""} changed
           </span>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs text-muted-foreground flex items-center gap-2">
+              {totalInlineComments > 0 && (
+                <span className="text-blue-600 dark:text-blue-400 font-medium flex items-center gap-0.5">
+                  <MessageSquarePlus className="h-3 w-3" />
+                  {totalInlineComments}
+                </span>
+              )}
               <span className="text-green-600 dark:text-green-400 font-medium">
                 +{totalAdditions}
-              </span>{" "}
+              </span>
               <span className="text-red-600 dark:text-red-400 font-medium">
                 -{totalDeletions}
               </span>
@@ -766,6 +1082,9 @@ export const DiffViewer = ({ files }: DiffViewerProps) => {
               viewMode={viewMode}
               highlighter={highlighter}
               isDark={isDark}
+              inlineComments={inlineComments}
+              onAddComment={onAddComment}
+              agentNameById={agentNameById}
             />
           </div>
         ))}
