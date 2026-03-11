@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { approvalsApi } from "../api/approvals";
 import { agentsApi } from "../api/agents";
+import { projectsApi } from "../api/projects";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
@@ -13,7 +14,7 @@ import { PageSkeleton } from "../components/PageSkeleton";
 import { DiffViewer } from "../components/DiffViewer";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { CheckCircle2, ChevronRight, GitBranch, GitMerge, Sparkles, AlertTriangle } from "lucide-react";
+import { CheckCircle2, ChevronRight, GitBranch, GitMerge, Hexagon, Sparkles, AlertTriangle } from "lucide-react";
 import type { ApprovalComment } from "@paperclipai/shared";
 import { MarkdownBody } from "../components/MarkdownBody";
 import type { MergeResult } from "../api/approvals";
@@ -62,6 +63,17 @@ export function ApprovalDetail() {
     queryKey: queryKeys.approvals.diff(approvalId!),
     queryFn: () => approvalsApi.getDiff(approvalId!),
     enabled: !!approvalId && isMergeRequest,
+  });
+
+  const linkedProjectId = useMemo(
+    () => linkedIssues?.find((issue) => issue.projectId)?.projectId ?? null,
+    [linkedIssues],
+  );
+
+  const { data: linkedProject } = useQuery({
+    queryKey: queryKeys.projects.detail(linkedProjectId!),
+    queryFn: () => projectsApi.get(linkedProjectId!, resolvedCompanyId ?? undefined),
+    enabled: !!linkedProjectId,
   });
 
   useEffect(() => {
@@ -298,6 +310,15 @@ export function ApprovalDetail() {
             <span className="font-mono text-xs font-medium break-all">{String(payload.branch ?? "")}</span>
             <span className="text-muted-foreground text-xs">&rarr;</span>
             <span className="font-mono text-xs font-medium break-all">{String(payload.baseBranch ?? "")}</span>
+            {linkedProject && (
+              <Link
+                to={`/projects/${linkedProject.urlKey || linkedProject.id}`}
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Hexagon className="h-3 w-3 shrink-0" />
+                <span className="truncate">{linkedProject.name}</span>
+              </Link>
+            )}
             {typeof payload.commitSha === "string" && (
               <span className="sm:ml-auto font-mono text-[10px] text-muted-foreground">
                 {payload.commitSha.slice(0, 7)}
