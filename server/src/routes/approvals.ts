@@ -158,6 +158,19 @@ export function approvalRoutes(db: Db) {
           )
         : approvalInput.payload;
 
+    // Deduplicate merge_request approvals: if a pending/revision_requested approval
+    // already exists for the same branch+baseBranch, return it instead of creating a new one.
+    if (approvalInput.type === "merge_request") {
+      const payload = normalizedPayload as Partial<MergeRequestPayload>;
+      if (payload.branch && payload.baseBranch) {
+        const existing = await svc.findExistingMergeRequest(companyId, payload.branch, payload.baseBranch);
+        if (existing) {
+          res.status(200).json(redactApprovalPayload(existing));
+          return;
+        }
+      }
+    }
+
     const actor = getActorInfo(req);
     const approval = await svc.create(companyId, {
       ...approvalInput,
