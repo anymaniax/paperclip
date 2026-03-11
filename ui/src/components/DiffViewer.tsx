@@ -429,7 +429,7 @@ const UnifiedDiffLine = ({
   const tokens = getLineTokens(line, highlight);
 
   return (
-    <div className={cn("flex text-xs font-mono leading-5 min-w-0", lineStyles[line.type])}>
+    <div className={cn("flex text-xs font-mono leading-5", lineStyles[line.type])}>
       <span
         className={cn(
           "w-8 sm:w-10 shrink-0 text-right px-1 select-none border-r border-border/40",
@@ -452,7 +452,7 @@ const UnifiedDiffLine = ({
       >
         {line.type === "header" ? "..." : line.type === "deletion" ? "" : line.newLineNo}
       </span>
-      <span className="pl-2 whitespace-pre overflow-x-auto flex-1">
+      <span className="pl-2 whitespace-pre flex-1">
         <LineContent line={line} tokens={tokens} />
       </span>
     </div>
@@ -472,7 +472,7 @@ const SplitDiffHalf = ({
 }) => {
   if (!line) {
     return (
-      <div className="w-1/2 flex text-xs font-mono leading-5 min-w-0 bg-muted/20">
+      <div className="w-1/2 flex text-xs font-mono leading-5 bg-muted/20">
         <span className="w-8 sm:w-10 shrink-0 border-r border-border/40" />
         <span className="flex-1" />
       </div>
@@ -482,7 +482,7 @@ const SplitDiffHalf = ({
   const lineNo = side === "left" ? line.oldLineNo : line.newLineNo;
 
   return (
-    <div className={cn("w-1/2 flex text-xs font-mono leading-5 min-w-0", lineStyles[line.type])}>
+    <div className={cn("w-1/2 flex text-xs font-mono leading-5", lineStyles[line.type])}>
       <span
         className={cn(
           "w-8 sm:w-10 shrink-0 text-right px-1 select-none border-r border-border/40",
@@ -491,7 +491,7 @@ const SplitDiffHalf = ({
       >
         {line.type === "header" ? "..." : lineNo}
       </span>
-      <span className="pl-2 whitespace-pre overflow-x-auto flex-1">
+      <span className="pl-2 whitespace-pre flex-1">
         <LineContent line={line} tokens={tokens} />
       </span>
     </div>
@@ -603,15 +603,17 @@ const FileDiffSection = ({
       <CollapsibleContent>
         <div className="border-t border-border overflow-x-auto">
           {lines.length > 0 ? (
-            viewMode === "unified" ? (
-              lines.map((line, i) => (
-                <UnifiedDiffLine key={i} line={line} highlight={highlight} />
-              ))
-            ) : (
-              splitRows.map((row, i) => (
-                <SplitDiffRow key={i} row={row} highlight={highlight} />
-              ))
-            )
+            <div className="w-fit min-w-full">
+              {viewMode === "unified" ? (
+                lines.map((line, i) => (
+                  <UnifiedDiffLine key={i} line={line} highlight={highlight} />
+                ))
+              ) : (
+                splitRows.map((row, i) => (
+                  <SplitDiffRow key={i} row={row} highlight={highlight} />
+                ))
+              )}
+            </div>
           ) : (
             <p className="text-xs text-muted-foreground px-3 py-2">No diff content available</p>
           )}
