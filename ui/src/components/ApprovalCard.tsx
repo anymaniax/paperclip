@@ -1,4 +1,4 @@
-import { CheckCircle2, XCircle, Clock } from "lucide-react";
+import { CheckCircle2, XCircle, Clock, Hexagon } from "lucide-react";
 import { Link } from "@/lib/router";
 import { Button } from "@/components/ui/button";
 import { Identity } from "./Identity";
@@ -50,6 +50,18 @@ export function ApprovalCard({
           </div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
+          {approval.linkedProject && (
+            <>
+              <Link
+                to={`/projects/${approval.linkedProject.urlKey || approval.linkedProject.id}`}
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Hexagon className="h-3 w-3 shrink-0" />
+                <span className="truncate max-w-[120px]">{approval.linkedProject.name}</span>
+              </Link>
+              <span className="text-xs text-muted-foreground">·</span>
+            </>
+          )}
           {statusIcon(approval.status)}
           <span className="text-xs text-muted-foreground capitalize">{approval.status}</span>
           <span className="text-xs text-muted-foreground">· {timeAgo(approval.createdAt)}</span>
