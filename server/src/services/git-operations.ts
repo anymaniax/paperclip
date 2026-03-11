@@ -160,7 +160,7 @@ export async function gitMerge(repoPath: string, baseBranch: string, branch: str
   return withRepoLock(repoPath, async () => {
     // Ensure working tree is clean before merge
     try {
-      const { stdout: statusOut } = await execGit(repoPath, ["status", "--porcelain"]);
+      const { stdout: statusOut } = await execGit(repoPath, ["status", "--porcelain", "-uno"]);
       if (statusOut.trim()) {
         return {
           success: false,
