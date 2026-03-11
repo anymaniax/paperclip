@@ -520,7 +520,7 @@ const CommentGutterButton = ({
   <button
     type="button"
     onClick={onClick}
-    className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 z-10 opacity-0 group-hover/line:opacity-100 transition-opacity bg-blue-500 hover:bg-blue-600 text-white rounded-full h-5 w-5 flex items-center justify-center shadow-sm"
+    className="absolute left-1 top-1/2 -translate-y-1/2 z-10 opacity-0 group-hover/line:opacity-100 transition-opacity bg-blue-500 hover:bg-blue-600 text-white rounded-full h-5 w-5 flex items-center justify-center shadow-sm"
     title="Add review comment"
   >
     <MessageSquarePlus className="h-3 w-3" />
@@ -843,7 +843,7 @@ const FileDiffSection = ({
     <Collapsible
       open={open}
       onOpenChange={setOpen}
-      className="border border-border rounded-md overflow-hidden"
+      className="border border-border rounded-md overflow-clip"
     >
       <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-accent/30 transition-colors">
         <ChevronRight
