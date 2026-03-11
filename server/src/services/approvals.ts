@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { approvalComments, approvals } from "@paperclipai/db";
 import type { MergeRequestPayload } from "@paperclipai/shared";
@@ -86,6 +86,21 @@ export function approvalService(db: Db) {
         .select()
         .from(approvals)
         .where(eq(approvals.id, id))
+        .then((rows) => rows[0] ?? null),
+
+    findExistingMergeRequest: (companyId: string, branch: string, baseBranch: string) =>
+      db
+        .select()
+        .from(approvals)
+        .where(
+          and(
+            eq(approvals.companyId, companyId),
+            eq(approvals.type, "merge_request"),
+            inArray(approvals.status, resolvableStatuses),
+            sql`${approvals.payload}->>'branch' = ${branch}`,
+            sql`${approvals.payload}->>'baseBranch' = ${baseBranch}`,
+          ),
+        )
         .then((rows) => rows[0] ?? null),
 
     create: (companyId: string, data: Omit<typeof approvals.$inferInsert, "companyId">) =>
