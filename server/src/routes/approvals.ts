@@ -1,4 +1,5 @@
 import { Router } from "express";
+import fs from "node:fs";
 import type { Db } from "@paperclipai/db";
 import { issues } from "@paperclipai/db";
 import { eq } from "drizzle-orm";
@@ -59,10 +60,12 @@ export function approvalRoutes(db: Db) {
     }
 
     if (payload.repoPath) {
-      if (registeredCwds.size > 0 && !registeredCwds.has(payload.repoPath)) {
-        throw unprocessable(`repoPath "${payload.repoPath}" is not a registered project workspace`);
+      // If path exists on disk and is a registered workspace (or no workspaces registered), use it
+      const pathExists = fs.existsSync(payload.repoPath);
+      if (pathExists && (registeredCwds.size === 0 || registeredCwds.has(payload.repoPath))) {
+        return payload.repoPath;
       }
-      return payload.repoPath;
+      // Path is gone (e.g. cleaned-up worktree) or not registered — fall through to primary workspace
     }
 
     // Fall back to primary workspace cwd
