@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { approvalsApi } from "../api/approvals";
@@ -187,6 +187,25 @@ export function ApprovalDetail() {
     },
     onError: (err) => setError(err instanceof Error ? err.message : "Comment failed"),
   });
+
+  const inlineComments = useMemo(
+    () => (comments ?? []).filter((c: ApprovalComment) => c.filePath != null),
+    [comments],
+  );
+
+  const generalComments = useMemo(
+    () => (comments ?? []).filter((c: ApprovalComment) => c.filePath == null),
+    [comments],
+  );
+
+  const handleAddInlineComment = useCallback(
+    async (filePath: string, lineNumber: number, side: "old" | "new", body: string) => {
+      if (!approvalId) return;
+      await approvalsApi.addComment(approvalId, body, { filePath, lineNumber, side });
+      refresh();
+    },
+    [approvalId],
+  );
 
   const deleteAgentMutation = useMutation({
     mutationFn: (agentId: string) => agentsApi.remove(agentId),
@@ -449,6 +468,11 @@ export function ApprovalDetail() {
               disabled={revisionMutation.isPending}
             >
               Request revision
+              {inlineComments.length > 0 && (
+                <span className="ml-1.5 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-[10px] rounded-full px-1.5 py-0.5 font-medium">
+                  {inlineComments.length}
+                </span>
+              )}
             </Button>
           )}
           {approval.status === "revision_requested" && (
@@ -487,7 +511,12 @@ export function ApprovalDetail() {
               <p className="text-sm text-muted-foreground">Loading diff...</p>
             </div>
           ) : diffResult?.files && diffResult.files.length > 0 ? (
-            <DiffViewer files={diffResult.files} />
+            <DiffViewer
+              files={diffResult.files}
+              inlineComments={inlineComments}
+              onAddComment={handleAddInlineComment}
+              agentNameById={agentNameById}
+            />
           ) : (
             <div className="border border-border rounded-lg p-6 text-center">
               <p className="text-sm text-muted-foreground">No file changes found</p>
@@ -497,9 +526,16 @@ export function ApprovalDetail() {
       )}
 
       <div className="border border-border rounded-lg p-4 space-y-3">
-        <h3 className="text-sm font-medium">Comments ({comments?.length ?? 0})</h3>
+        <h3 className="text-sm font-medium">
+          Comments ({generalComments.length})
+          {inlineComments.length > 0 && (
+            <span className="text-muted-foreground font-normal ml-1">
+              + {inlineComments.length} inline
+            </span>
+          )}
+        </h3>
         <div className="space-y-2">
-          {(comments ?? []).map((comment: ApprovalComment) => (
+          {generalComments.map((comment: ApprovalComment) => (
             <div key={comment.id} className="border border-border/60 rounded-md p-3">
               <div className="flex items-center justify-between mb-1">
                 {comment.authorAgentId ? (

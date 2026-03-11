@@ -456,10 +456,19 @@ export function approvalRoutes(db: Db) {
     }
     assertCompanyAccess(req, approval.companyId);
     const actor = getActorInfo(req);
-    const comment = await svc.addComment(id, req.body.body, {
-      agentId: actor.agentId ?? undefined,
-      userId: actor.actorType === "user" ? actor.actorId : undefined,
-    });
+    const lineContext =
+      req.body.filePath && req.body.lineNumber && req.body.side
+        ? { filePath: req.body.filePath as string, lineNumber: req.body.lineNumber as number, side: req.body.side as "old" | "new" }
+        : undefined;
+    const comment = await svc.addComment(
+      id,
+      req.body.body,
+      {
+        agentId: actor.agentId ?? undefined,
+        userId: actor.actorType === "user" ? actor.actorId : undefined,
+      },
+      lineContext,
+    );
 
     await logActivity(db, {
       companyId: approval.companyId,

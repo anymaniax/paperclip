@@ -299,6 +299,7 @@ export function approvalService(db: Db) {
       approvalId: string,
       body: string,
       actor: { agentId?: string; userId?: string },
+      lineContext?: { filePath: string; lineNumber: number; side: "old" | "new" },
     ) => {
       const existing = await getExistingApproval(approvalId);
       return db
@@ -309,6 +310,9 @@ export function approvalService(db: Db) {
           authorAgentId: actor.agentId ?? null,
           authorUserId: actor.userId ?? null,
           body,
+          filePath: lineContext?.filePath ?? null,
+          lineNumber: lineContext?.lineNumber ?? null,
+          side: lineContext?.side ?? null,
         })
         .returning()
         .then((rows) => rows[0]);

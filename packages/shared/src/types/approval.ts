@@ -40,6 +40,9 @@ export interface ApprovalComment {
   authorAgentId: string | null;
   authorUserId: string | null;
   body: string;
+  filePath: string | null;
+  lineNumber: number | null;
+  side: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

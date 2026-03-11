@@ -36,8 +36,19 @@ export const approvalsApi = {
   resubmit: (id: string, payload?: Record<string, unknown>) =>
     api.post<Approval>(`/approvals/${id}/resubmit`, { payload }),
   listComments: (id: string) => api.get<ApprovalComment[]>(`/approvals/${id}/comments`),
-  addComment: (id: string, body: string) =>
-    api.post<ApprovalComment>(`/approvals/${id}/comments`, { body }),
+  addComment: (
+    id: string,
+    body: string,
+    lineContext?: { filePath: string; lineNumber: number; side: "old" | "new" },
+  ) =>
+    api.post<ApprovalComment>(`/approvals/${id}/comments`, {
+      body,
+      ...(lineContext && {
+        filePath: lineContext.filePath,
+        lineNumber: lineContext.lineNumber,
+        side: lineContext.side,
+      }),
+    }),
   listIssues: (id: string) => api.get<Issue[]>(`/approvals/${id}/issues`),
   getDiff: (id: string) => api.get<DiffResult>(`/approvals/${id}/diff`),
   merge: (id: string) => api.post<MergeResult>(`/approvals/${id}/merge`, {}),
