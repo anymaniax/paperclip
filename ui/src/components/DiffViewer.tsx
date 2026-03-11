@@ -15,7 +15,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { createHighlighter, type BundledLanguage, type Highlighter, type ThemedToken } from "shiki";
 import type { DiffFile } from "../api/approvals";
@@ -162,6 +161,10 @@ const initHighlighter = (): Promise<Highlighter> => {
   return highlighterPromise;
 };
 
+// Eagerly kick off initialization so the highlighter is ready by the time
+// any DiffViewer mounts, rather than waiting until first render.
+initHighlighter();
+
 const useHighlighter = (): Highlighter | null => {
   const [h, setH] = useState<Highlighter | null>(highlighterInstance);
   useEffect(() => {
@@ -256,16 +259,12 @@ const useFileHighlight = (
   filePath: string,
   highlighter: Highlighter | null,
   isDark: boolean,
-  isOpen: boolean,
 ): HighlightedFile | null =>
   useMemo(() => {
-    if (!highlighter || !isOpen) return null;
+    if (!highlighter) return null;
 
     const lang = detectLang(filePath);
     if (!lang) return null;
-
-    const loadedLangs = highlighter.getLoadedLanguages();
-    if (!loadedLangs.includes(lang)) return null;
 
     const theme = isDark ? "github-dark" : "github-light";
 
@@ -310,7 +309,7 @@ const useFileHighlight = (
     }
 
     return { oldTokens: oldTokenMap, newTokens: newTokenMap };
-  }, [lines, filePath, highlighter, isDark, isOpen]);
+  }, [lines, filePath, highlighter, isDark]);
 
 // ── Token helpers ──────────────────────────────────────────
 
@@ -561,7 +560,7 @@ const FileDiffSection = ({
     () => (viewMode === "split" ? pairLinesForSplit(lines) : []),
     [lines, viewMode],
   );
-  const highlight = useFileHighlight(lines, file.path, highlighter, isDark, open);
+  const highlight = useFileHighlight(lines, file.path, highlighter, isDark);
   const Icon = statusIcon[file.status] ?? FileEdit;
 
   return (
