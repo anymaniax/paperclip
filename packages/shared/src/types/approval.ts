@@ -43,6 +43,12 @@ export interface ApprovalComment {
   filePath: string | null;
   lineNumber: number | null;
   side: string | null;
+  resolvedAt: Date | null;
+  resolutionNote: string | null;
+  resolvedByAgentId: string | null;
+  resolvedByUserId: string | null;
+  reopenedAt: Date | null;
+  reopenedByUserId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

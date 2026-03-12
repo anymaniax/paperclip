@@ -52,4 +52,14 @@ export const approvalsApi = {
   listIssues: (id: string) => api.get<Issue[]>(`/approvals/${id}/issues`),
   getDiff: (id: string) => api.get<DiffResult>(`/approvals/${id}/diff`),
   merge: (id: string) => api.post<MergeResult>(`/approvals/${id}/merge`, {}),
+  patchCommentResolution: (
+    approvalId: string,
+    commentId: string,
+    action: "resolve" | "reopen",
+    note?: string,
+  ) =>
+    api.patch<ApprovalComment>(`/approvals/${approvalId}/comments/${commentId}/resolution`, {
+      action,
+      ...(note != null && { note }),
+    }),
 };
