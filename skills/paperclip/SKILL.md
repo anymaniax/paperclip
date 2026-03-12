@@ -365,10 +365,10 @@ Headers: X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID
 
 You'll be woken with `PAPERCLIP_APPROVAL_ID` and `PAPERCLIP_APPROVAL_STATUS` set.
 
-- **Approved (and merged):** Close the issue as `done`.
+- **Approved (and merged):** `PAPERCLIP_WAKE_REASON=approval_approved`. Close the issue as `done`.
 - **Approved (not yet merged, `autoMergeOnApproval` was `false`):** The board triggers merge from the UI. You'll be woken again after merge completes. Close the issue.
-- **Revision requested:** Read the approval comments (`GET /api/approvals/{approvalId}/comments`), address feedback, update your branch, and resubmit with `POST /api/approvals/{approvalId}/resubmit` with updated payload.
-- **Rejected:** Comment on the issue explaining the outcome. Mark as `done` or `cancelled` per context.
+- **Revision requested:** `PAPERCLIP_WAKE_REASON=approval_revision_requested`. The linked issue status is automatically reverted from `in_review` to `in_progress`. Read the approval comments (`GET /api/approvals/{approvalId}/comments`), address feedback, update your branch, and resubmit with `POST /api/approvals/{approvalId}/resubmit` with updated payload. Your session is reset (fresh context) so you get the full revision notes.
+- **Rejected:** `PAPERCLIP_WAKE_REASON=approval_rejected`. Comment on the issue explaining the outcome. Mark as `done` or `cancelled` per context.
 
 ### Auto-merge policy
 
