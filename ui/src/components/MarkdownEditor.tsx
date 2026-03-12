@@ -25,6 +25,8 @@ import {
   quotePlugin,
   tablePlugin,
   thematicBreakPlugin,
+  toolbarPlugin,
+  InsertCodeBlock,
   type RealmPlugin,
 } from "@mdxeditor/editor";
 import { buildProjectMentionHref, parseProjectMentionHref } from "@paperclipai/shared";
@@ -272,6 +274,9 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
         codeBlockEditorDescriptors: [FALLBACK_CODE_BLOCK_DESCRIPTOR],
       }),
       codeMirrorPlugin({ codeBlockLanguages: CODE_BLOCK_LANGUAGES }),
+      toolbarPlugin({
+        toolbarContents: () => <InsertCodeBlock />,
+      }),
       markdownShortcutPlugin(),
     ];
     if (imageHandler) {
