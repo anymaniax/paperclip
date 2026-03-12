@@ -14,10 +14,68 @@ import { PageSkeleton } from "../components/PageSkeleton";
 import { DiffViewer } from "../components/DiffViewer";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Check, CheckCircle2, ChevronRight, GitBranch, GitMerge, Hexagon, Sparkles, AlertTriangle } from "lucide-react";
+import { Check, CheckCircle2, ChevronRight, GitBranch, GitMerge, Hexagon, Sparkles, AlertTriangle, RotateCcw, CheckSquare } from "lucide-react";
 import type { ApprovalComment } from "@paperclipai/shared";
 import { MarkdownBody } from "../components/MarkdownBody";
 import type { MergeResult } from "../api/approvals";
+
+type ResolutionState = "resolved" | "reopened" | "unresolved";
+
+const getResolutionState = (comment: ApprovalComment): ResolutionState => {
+  if (!comment.resolvedAt) return "unresolved";
+  if (comment.reopenedAt && new Date(comment.reopenedAt) > new Date(comment.resolvedAt)) {
+    return "reopened";
+  }
+  return "resolved";
+};
+
+const ResolutionBadge = ({
+  comment,
+  agentNameById,
+}: {
+  comment: ApprovalComment;
+  agentNameById: Map<string, string>;
+}) => {
+  const state = getResolutionState(comment);
+
+  if (state === "resolved") {
+    const resolverName = comment.resolvedByAgentId
+      ? agentNameById.get(comment.resolvedByAgentId) ?? "Agent"
+      : "Board";
+    return (
+      <div className="flex items-center gap-1.5 text-xs text-green-700 dark:text-green-400">
+        <CheckCircle2 className="h-3.5 w-3.5" />
+        <span className="font-medium">Addressed</span>
+        {comment.resolutionNote && (
+          <span className="text-green-600/80 dark:text-green-400/70">
+            — {comment.resolutionNote}
+          </span>
+        )}
+        {!comment.resolutionNote && (
+          <span className="text-green-600/60 dark:text-green-400/50">
+            by {resolverName}
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  if (state === "reopened") {
+    return (
+      <div className="flex items-center gap-1.5 text-xs text-yellow-700 dark:text-yellow-400">
+        <AlertTriangle className="h-3.5 w-3.5" />
+        <span className="font-medium">Reopened</span>
+        {comment.resolutionNote && (
+          <span className="text-yellow-600/80 dark:text-yellow-400/70">
+            — {comment.resolutionNote}
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  return null;
+};
 
 export function ApprovalDetail() {
   const { approvalId } = useParams<{ approvalId: string }>();
@@ -206,6 +264,23 @@ export function ApprovalDetail() {
     },
     [approvalId],
   );
+
+  const { mutate: resolveComment, isPending: isResolvingComment } = useMutation({
+    mutationFn: ({
+      commentId,
+      action,
+      note,
+    }: {
+      commentId: string;
+      action: "resolve" | "reopen";
+      note?: string;
+    }) => approvalsApi.patchCommentResolution(approvalId!, commentId, action, note),
+    onSuccess: () => {
+      setError(null);
+      refresh();
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : "Resolution update failed"),
+  });
 
   const deleteAgentMutation = useMutation({
     mutationFn: (agentId: string) => agentsApi.remove(agentId),
@@ -550,26 +625,81 @@ export function ApprovalDetail() {
           )}
         </h3>
         <div className="space-y-2">
-          {generalComments.map((comment: ApprovalComment) => (
-            <div key={comment.id} className="border border-border/60 rounded-md p-3">
-              <div className="flex items-center justify-between mb-1">
-                {comment.authorAgentId ? (
-                  <Link to={`/agents/${comment.authorAgentId}`} className="hover:underline">
-                    <Identity
-                      name={agentNameById.get(comment.authorAgentId) ?? comment.authorAgentId.slice(0, 8)}
-                      size="sm"
-                    />
-                  </Link>
-                ) : (
-                  <Identity name="Board" size="sm" />
+          {generalComments.map((comment: ApprovalComment) => {
+            const resolutionState = getResolutionState(comment);
+            const isResolved = resolutionState === "resolved";
+
+            return (
+              <div
+                key={comment.id}
+                className={`border rounded-md p-3 transition-opacity ${
+                  isResolved
+                    ? "border-green-200 dark:border-green-800/30 bg-green-50/30 dark:bg-green-950/10 opacity-70"
+                    : resolutionState === "reopened"
+                      ? "border-yellow-200 dark:border-yellow-800/30 bg-yellow-50/20 dark:bg-yellow-950/10"
+                      : "border-border/60"
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  {comment.authorAgentId ? (
+                    <Link to={`/agents/${comment.authorAgentId}`} className="hover:underline">
+                      <Identity
+                        name={agentNameById.get(comment.authorAgentId) ?? comment.authorAgentId.slice(0, 8)}
+                        size="sm"
+                      />
+                    </Link>
+                  ) : (
+                    <Identity name="Board" size="sm" />
+                  )}
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(comment.createdAt).toLocaleString()}
+                  </span>
+                </div>
+                <MarkdownBody className="text-sm">{comment.body}</MarkdownBody>
+
+                {/* Resolution badge */}
+                {resolutionState !== "unresolved" && (
+                  <div className="mt-2 pt-2 border-t border-border/40">
+                    <ResolutionBadge comment={comment} agentNameById={agentNameById} />
+                  </div>
                 )}
-                <span className="text-xs text-muted-foreground">
-                  {new Date(comment.createdAt).toLocaleString()}
-                </span>
+
+                {/* Board controls — Reopen for resolved, Mark Resolved for reopened/unresolved on pending approval */}
+                {(isResolved || (!isResolved && approval.status === "pending")) && (
+                  <div className="mt-2 flex items-center gap-2">
+                    {isResolved && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs text-yellow-700 dark:text-yellow-400 hover:text-yellow-800 dark:hover:text-yellow-300 hover:bg-yellow-50 dark:hover:bg-yellow-950/30"
+                        onClick={() =>
+                          resolveComment({ commentId: comment.id, action: "reopen" })
+                        }
+                        disabled={isResolvingComment}
+                      >
+                        <RotateCcw className="h-3 w-3 mr-1" />
+                        Reopen
+                      </Button>
+                    )}
+                    {!isResolved && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs text-green-700 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300 hover:bg-green-50 dark:hover:bg-green-950/30"
+                        onClick={() =>
+                          resolveComment({ commentId: comment.id, action: "resolve" })
+                        }
+                        disabled={isResolvingComment}
+                      >
+                        <CheckSquare className="h-3 w-3 mr-1" />
+                        Mark Resolved
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
-              <MarkdownBody className="text-sm">{comment.body}</MarkdownBody>
-            </div>
-          ))}
+            );
+          })}
         </div>
         <Textarea
           value={commentBody}
