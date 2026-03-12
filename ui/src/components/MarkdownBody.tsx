@@ -1,9 +1,12 @@
-import { isValidElement, useEffect, useId, useState, type CSSProperties, type ReactNode } from "react";
+import { isValidElement, useEffect, useId, useState, useCallback, type CSSProperties, type ReactNode } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { Copy, Check } from "lucide-react";
 import { parseProjectMentionHref } from "@paperclipai/shared";
 import { cn } from "../lib/utils";
 import { useTheme } from "../context/ThemeContext";
+import { getShikiHighlighter, normalizeLanguage } from "../lib/shiki";
+import type { Highlighter } from "shiki";
 
 interface MarkdownBodyProps {
   children: string;
@@ -112,6 +115,102 @@ function MermaidDiagramBlock({ source, darkMode }: { source: string; darkMode: b
   );
 }
 
+// ── Code block extraction ───────────────────────────────────
+
+interface CodeBlockInfo {
+  language: string | null;
+  code: string;
+}
+
+function extractCodeBlock(children: ReactNode): CodeBlockInfo | null {
+  if (!isValidElement(children)) return null;
+  const childProps = children.props as { className?: unknown; children?: ReactNode };
+  const className2 = typeof childProps.className === "string" ? childProps.className : "";
+  const langMatch = /\blanguage-(\S+)/.exec(className2);
+  const language = langMatch ? langMatch[1] : null;
+  const code = flattenText(childProps.children).replace(/\n$/, "");
+  return { language, code };
+}
+
+// ── Shiki code block with copy + language badge ─────────────
+
+function ShikiCodeBlock({ language, code, darkMode }: { language: string | null; code: string; darkMode: boolean }) {
+  const [html, setHtml] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const resolvedLang = language ? normalizeLanguage(language) : null;
+
+  useEffect(() => {
+    let active = true;
+    getShikiHighlighter().then((highlighter: Highlighter) => {
+      if (!active) return;
+      if (!resolvedLang) {
+        setHtml(null);
+        return;
+      }
+      const theme = darkMode ? "github-dark" : "github-light";
+      try {
+        const result = highlighter.codeToHtml(code, { lang: resolvedLang, theme });
+        setHtml(result);
+      } catch {
+        setHtml(null);
+      }
+    });
+    return () => { active = false; };
+  }, [code, resolvedLang, darkMode]);
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(code).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }, [code]);
+
+  return (
+    <div className="group/codeblock relative not-prose my-2 rounded-md border border-border/50 bg-[var(--shiki-bg,_hsl(var(--muted)))] overflow-hidden">
+      {/* Language badge + Copy button header */}
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/30 bg-muted/30">
+        {language ? (
+          <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground select-none">
+            {language}
+          </span>
+        ) : (
+          <span />
+        )}
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+          aria-label={copied ? "Copied" : "Copy code"}
+        >
+          {copied ? (
+            <>
+              <Check className="h-3 w-3 text-green-500" />
+              <span className="text-green-500">Copied</span>
+            </>
+          ) : (
+            <>
+              <Copy className="h-3 w-3" />
+              <span>Copy</span>
+            </>
+          )}
+        </button>
+      </div>
+      {/* Code content */}
+      {html ? (
+        <div
+          className="overflow-x-auto text-xs leading-5 [&_pre]:!m-0 [&_pre]:!bg-transparent [&_pre]:p-3 [&_code]:!bg-transparent"
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      ) : (
+        <pre className="overflow-x-auto text-xs leading-5 p-3 m-0">
+          <code>{code}</code>
+        </pre>
+      )}
+    </div>
+  );
+}
+
 export function MarkdownBody({ children, className }: MarkdownBodyProps) {
   const { theme } = useTheme();
   return (
@@ -129,6 +228,10 @@ export function MarkdownBody({ children, className }: MarkdownBodyProps) {
             const mermaidSource = extractMermaidSource(preChildren);
             if (mermaidSource) {
               return <MermaidDiagramBlock source={mermaidSource} darkMode={theme === "dark"} />;
+            }
+            const codeBlock = extractCodeBlock(preChildren);
+            if (codeBlock) {
+              return <ShikiCodeBlock language={codeBlock.language} code={codeBlock.code} darkMode={theme === "dark"} />;
             }
             return <pre {...preProps}>{preChildren}</pre>;
           },
