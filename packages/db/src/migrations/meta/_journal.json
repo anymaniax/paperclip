@@ -211,6 +211,13 @@
       "when": 1773451200000,
       "tag": "0029_inline_review_comments",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1773537600000,
+      "tag": "0030_revision_wake_agent",
+      "breakpoints": true
     }
   ]
 }

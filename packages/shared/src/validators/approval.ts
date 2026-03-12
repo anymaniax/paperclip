@@ -16,6 +16,7 @@ export const createApprovalSchema = z
   .object({
     type: z.enum(APPROVAL_TYPES),
     requestedByAgentId: z.string().uuid().optional().nullable(),
+    revisionWakeAgentId: z.string().uuid().optional().nullable(),
     payload: z.record(z.unknown()),
     issueIds: z.array(z.string().uuid()).optional(),
   })
@@ -51,6 +52,7 @@ export type RequestApprovalRevision = z.infer<typeof requestApprovalRevisionSche
 
 export const resubmitApprovalSchema = z.object({
   payload: z.record(z.unknown()).optional(),
+  revisionWakeAgentId: z.string().uuid().optional().nullable(),
 });
 
 export type ResubmitApproval = z.infer<typeof resubmitApprovalSchema>;

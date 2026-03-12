@@ -10,6 +10,7 @@ export const approvals = pgTable(
     type: text("type").notNull(),
     requestedByAgentId: uuid("requested_by_agent_id").references(() => agents.id),
     requestedByUserId: text("requested_by_user_id"),
+    revisionWakeAgentId: uuid("revision_wake_agent_id").references(() => agents.id),
     status: text("status").notNull().default("pending"),
     payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
     decisionNote: text("decision_note"),

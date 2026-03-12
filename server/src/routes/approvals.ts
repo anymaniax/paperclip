@@ -481,10 +481,12 @@ export function approvalRoutes(db: Db) {
         }
       }
 
-      // Wake the submitting agent so it can address the revision feedback
-      if (approval.requestedByAgentId) {
+      // Wake the target agent so it can address the revision feedback.
+      // revisionWakeAgentId takes precedence over requestedByAgentId when set.
+      if (approval.revisionWakeAgentId || approval.requestedByAgentId) {
+        const wakeTargetId = approval.revisionWakeAgentId ?? approval.requestedByAgentId;
         try {
-          const wakeRun = await heartbeat.wakeup(approval.requestedByAgentId, {
+          const wakeRun = await heartbeat.wakeup(wakeTargetId!, {
             source: "automation",
             triggerDetail: "system",
             reason: "approval_revision_requested",
@@ -516,6 +518,8 @@ export function approvalRoutes(db: Db) {
             entityId: approval.id,
             details: {
               requesterAgentId: approval.requestedByAgentId,
+              revisionWakeAgentId: approval.revisionWakeAgentId,
+              wakeTargetId,
               wakeRunId: wakeRun?.id ?? null,
               linkedIssueIds,
             },
@@ -526,6 +530,8 @@ export function approvalRoutes(db: Db) {
               err,
               approvalId: approval.id,
               requestedByAgentId: approval.requestedByAgentId,
+              revisionWakeAgentId: approval.revisionWakeAgentId,
+              wakeTargetId,
             },
             "failed to queue requester wakeup after revision request",
           );
@@ -538,6 +544,8 @@ export function approvalRoutes(db: Db) {
             entityId: approval.id,
             details: {
               requesterAgentId: approval.requestedByAgentId,
+              revisionWakeAgentId: approval.revisionWakeAgentId,
+              wakeTargetId,
               linkedIssueIds,
               error: err instanceof Error ? err.message : String(err),
             },
@@ -572,7 +580,7 @@ export function approvalRoutes(db: Db) {
           )
         : req.body.payload
       : undefined;
-    const approval = await svc.resubmit(id, normalizedPayload);
+    const approval = await svc.resubmit(id, normalizedPayload, req.body.revisionWakeAgentId);
     const actor = getActorInfo(req);
     await logActivity(db, {
       companyId: approval.companyId,

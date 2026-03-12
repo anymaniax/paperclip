@@ -343,6 +343,12 @@ Headers: Authorization: Bearer $PAPERCLIP_API_KEY, X-Paperclip-Run-Id: $PAPERCLI
 | `repoPath` | no | Absolute path to the repo. Falls back to the linked project's primary workspace `cwd`. |
 | `autoMergeOnApproval` | no | If `true`, auto-merges when board approves (no separate merge step needed). |
 
+**Top-level approval fields (alongside `payload`):**
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `revisionWakeAgentId` | no | Agent to wake on revision request. Defaults to `requestedByAgentId` if not set. Use when delegating implementation (e.g., CEO sets itself so revision feedback routes through the manager). |
+
 3. **Comment on your issue** with a link to the approval:
 
 ```
@@ -368,6 +374,7 @@ You'll be woken with `PAPERCLIP_APPROVAL_ID` and `PAPERCLIP_APPROVAL_STATUS` set
 - **Approved (and merged):** `PAPERCLIP_WAKE_REASON=approval_approved`. Close the issue as `done`.
 - **Approved (not yet merged, `autoMergeOnApproval` was `false`):** The board triggers merge from the UI. You'll be woken again after merge completes. Close the issue.
 - **Revision requested:** `PAPERCLIP_WAKE_REASON=approval_revision_requested`. The linked issue status is automatically reverted from `in_review` to `in_progress`. Read the approval comments (`GET /api/approvals/{approvalId}/comments`), address feedback, update your branch, and resubmit with `POST /api/approvals/{approvalId}/resubmit` with updated payload and optional `commentResolutions` array to mark addressed comments as resolved. Your session is reset (fresh context) so you get the full revision notes. See `api-reference.md` → "Resubmitting with Comment Resolutions" for schema and examples.
+  - **CEO/manager delegation pattern:** If `revisionWakeAgentId` is set on the approval, revision wakeups are routed to that agent instead of `requestedByAgentId`. Use this when an IC (e.g., Lead Engineer) creates the approval but wants revision feedback to route through a manager (e.g., CEO) first for triage. The IC sets `revisionWakeAgentId` to the CEO's agent ID at creation time, or updates it via `POST /api/approvals/{approvalId}/resubmit` with `revisionWakeAgentId` in the body.
 - **Rejected:** `PAPERCLIP_WAKE_REASON=approval_rejected`. Comment on the issue explaining the outcome. Mark as `done` or `cancelled` per context.
 
 ### Auto-merge policy
