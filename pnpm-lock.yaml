@@ -258,6 +258,7 @@ importers:
 
   ui:
     specifiers:
+      '@codemirror/theme-one-dark': ^6.1.3
       '@dnd-kit/core': ^6.3.1
       '@dnd-kit/sortable': ^10.0.0
       '@dnd-kit/utilities': ^3.2.2
@@ -296,6 +297,7 @@ importers:
       vite: ^6.1.0
       vitest: ^3.0.5
     dependencies:
+      '@codemirror/theme-one-dark': 6.1.3
       '@dnd-kit/core': 6.3.1_ju5i5k46jjvnblsfiwqzrn6cj4
       '@dnd-kit/sortable': 10.0.0_tcnw4qleao7u7kejwqgtwlr2fi
       '@dnd-kit/utilities': 3.2.2_react@19.2.4
@@ -1657,6 +1659,15 @@ packages:
     resolution: {integrity: sha512-8y7xqG/hpB53l25CIoit9/ngxdfoG+fx+V3SHBrinnhOtLvKHRyAJJuHzkWrR4YXXLX8eXBsejgAAxHUOdW1yw==}
     dependencies:
       '@marijn/find-cluster-break': 1.0.2
+    dev: false
+
+  /@codemirror/theme-one-dark/6.1.3:
+    resolution: {integrity: sha512-NzBdIvEJmx6fjeremiGp3t/okrLPYT0d9orIc7AFun8oZcRk58aejkqhv6spnz4MLAevrKNPMQYXEWMg4s+sKA==}
+    dependencies:
+      '@codemirror/language': 6.12.2
+      '@codemirror/state': 6.5.4
+      '@codemirror/view': 6.39.17
+      '@lezer/highlight': 1.2.3
     dev: false
 
   /@codemirror/view/6.39.17:
