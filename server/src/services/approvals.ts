@@ -259,7 +259,7 @@ export function approvalService(db: Db) {
         .then((rows) => rows[0]);
     },
 
-    resubmit: async (id: string, payload?: Record<string, unknown>) => {
+    resubmit: async (id: string, payload?: Record<string, unknown>, revisionWakeAgentId?: string | null) => {
       const existing = await getExistingApproval(id);
       if (existing.status !== "revision_requested") {
         throw unprocessable("Only revision requested approvals can be resubmitted");
@@ -271,6 +271,7 @@ export function approvalService(db: Db) {
         .set({
           status: "pending",
           payload: payload ?? existing.payload,
+          ...(revisionWakeAgentId !== undefined ? { revisionWakeAgentId } : {}),
           decisionNote: null,
           decidedByUserId: null,
           decidedAt: null,
