@@ -29,8 +29,10 @@ import {
   InsertCodeBlock,
   type RealmPlugin,
 } from "@mdxeditor/editor";
+import { oneDark } from "@codemirror/theme-one-dark";
 import { buildProjectMentionHref, parseProjectMentionHref } from "@paperclipai/shared";
 import { cn } from "../lib/utils";
+import { useTheme } from "../context/ThemeContext";
 
 /* ---- Mention types ---- */
 
@@ -203,6 +205,8 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
   mentions,
   onSubmit,
 }: MarkdownEditorProps, forwardedRef) {
+  const { theme } = useTheme();
+  const darkMode = theme === "dark";
   const containerRef = useRef<HTMLDivElement>(null);
   const ref = useRef<MDXEditorMethods>(null);
   const latestValueRef = useRef(value);
@@ -273,7 +277,10 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
         defaultCodeBlockLanguage: "txt",
         codeBlockEditorDescriptors: [FALLBACK_CODE_BLOCK_DESCRIPTOR],
       }),
-      codeMirrorPlugin({ codeBlockLanguages: CODE_BLOCK_LANGUAGES }),
+      codeMirrorPlugin({
+        codeBlockLanguages: CODE_BLOCK_LANGUAGES,
+        codeMirrorExtensions: darkMode ? [oneDark] : [],
+      }),
       toolbarPlugin({
         toolbarContents: () => <InsertCodeBlock />,
       }),
@@ -283,7 +290,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
       all.push(imagePlugin({ imageUploadHandler: imageHandler }));
     }
     return all;
-  }, [hasImageUpload]);
+  }, [hasImageUpload, darkMode]);
 
   useEffect(() => {
     if (value !== latestValueRef.current) {
