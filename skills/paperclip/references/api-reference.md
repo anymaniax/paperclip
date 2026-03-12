@@ -438,6 +438,67 @@ GET /api/approvals/{approvalId}/issues
 
 Then close or comment on linked issues to complete the workflow.
 
+### Resubmitting with Comment Resolutions
+
+When the board requests a revision (`POST /api/approvals/:approvalId/request-revision`), they may leave comments explaining what needs to change. When resubmitting, you can resolve those comments inline by including a `commentResolutions` array alongside the updated payload:
+
+**Recommended workflow:**
+
+1. Fetch revision comments: `GET /api/approvals/{approvalId}/comments`
+2. Address each comment in your code/plan changes
+3. Include `commentResolutions` in your resubmit call — for each comment, either mark it resolved with a note explaining what you changed, or intentionally skip it (the reviewer will see it as unresolved)
+
+```
+POST /api/approvals/{approvalId}/resubmit
+{
+  "payload": {
+    "branch": "my-feature-branch",
+    "baseBranch": "master",
+    "diffSummary": "Updated based on review feedback",
+    "filesChanged": ["server/src/routes/auth.ts"],
+    "commitSha": "def456abc",
+    "commitMessage": "fix: address review feedback on auth endpoint"
+  },
+  "commentResolutions": [
+    { "commentId": "uuid-of-comment-1", "note": "Fixed by extracting to shared util" },
+    { "commentId": "uuid-of-comment-2", "note": "Out of scope for this PR — tracked in EMA-99" }
+  ]
+}
+```
+
+**Schema:**
+
+```ts
+commentResolutions: z.array(z.object({
+  commentId: z.string().uuid(),  // ID from GET /api/approvals/:id/comments
+  note: z.string().max(1000),    // explain how feedback was addressed
+})).optional()
+```
+
+**Key points:**
+
+- `commentResolutions` is **optional** and fully backwards compatible — resubmit works exactly as before without it
+- Comments NOT included in the array are left as-is (unresolved) — the board reviewer will see them
+- Board members can override agent resolutions by manually reopening or resolving comments via `PATCH /api/approvals/:approvalId/comments/:commentId/resolution`
+- Resubmit is NOT blocked by unresolved comments
+
+### Manual Comment Resolution (Board)
+
+Board members can manually resolve or reopen individual approval comments at any time:
+
+```
+PATCH /api/approvals/{approvalId}/comments/{commentId}/resolution
+{
+  "action": "resolve",
+  "note": "Confirmed fixed in latest resubmission"
+}
+```
+
+- `action` — `"resolve"` or `"reopen"` (required)
+- `note` — optional explanation (max 1000 chars)
+
+This allows the board to track which feedback items have been addressed independently of the resubmit flow.
+
 ---
 
 ## Issue Lifecycle
@@ -536,7 +597,8 @@ Terminal states: `done`, `cancelled`
 | GET    | `/api/approvals/:approvalId/comments`        | Approval comments                  |
 | POST   | `/api/approvals/:approvalId/comments`        | Add approval comment               |
 | POST   | `/api/approvals/:approvalId/request-revision`| Board asks for revision            |
-| POST   | `/api/approvals/:approvalId/resubmit`        | Resubmit revised approval          |
+| POST   | `/api/approvals/:approvalId/resubmit`        | Resubmit revised approval (optional `commentResolutions`) |
+| PATCH  | `/api/approvals/:approvalId/comments/:commentId/resolution` | Resolve or reopen a comment (board only) |
 | GET    | `/api/approvals/:approvalId/diff`            | Structured diff for `merge_request` approvals |
 | POST   | `/api/approvals/:approvalId/merge`           | Merge branch (board only, `merge_request` type) |
 | GET    | `/api/companies/:companyId/costs/summary`    | Company cost summary               |
