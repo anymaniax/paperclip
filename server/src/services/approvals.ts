@@ -3,6 +3,7 @@ import type { Db } from "@paperclipai/db";
 import { approvalComments, approvals } from "@paperclipai/db";
 import type { MergeRequestPayload } from "@paperclipai/shared";
 import { notFound, unprocessable } from "../errors.js";
+import { redactCurrentUserText } from "../log-redaction.js";
 import { agentService } from "./agents.js";
 import { notifyHireApproved } from "./hire-hook.js";
 import { gitMerge } from "./git-operations.js";
@@ -10,6 +11,13 @@ import { issueApprovalService } from "./issue-approvals.js";
 import { projectService } from "./projects.js";
 import { logActivity } from "./activity-log.js";
 import { logger } from "../middleware/logger.js";
+
+function redactApprovalComment<T extends { body: string }>(comment: T): T {
+  return {
+    ...comment,
+    body: redactCurrentUserText(comment.body),
+  };
+}
 
 export function approvalService(db: Db) {
   const agentsSvc = agentService(db);
@@ -293,7 +301,8 @@ export function approvalService(db: Db) {
             eq(approvalComments.companyId, existing.companyId),
           ),
         )
-        .orderBy(asc(approvalComments.createdAt));
+        .orderBy(asc(approvalComments.createdAt))
+        .then((comments) => comments.map(redactApprovalComment));
     },
 
     addComment: async (
@@ -303,6 +312,7 @@ export function approvalService(db: Db) {
       lineContext?: { filePath: string; lineNumber: number; side: "old" | "new" },
     ) => {
       const existing = await getExistingApproval(approvalId);
+      const redactedBody = redactCurrentUserText(body);
       return db
         .insert(approvalComments)
         .values({
@@ -310,13 +320,13 @@ export function approvalService(db: Db) {
           approvalId,
           authorAgentId: actor.agentId ?? null,
           authorUserId: actor.userId ?? null,
-          body,
+          body: redactedBody,
           filePath: lineContext?.filePath ?? null,
           lineNumber: lineContext?.lineNumber ?? null,
           side: lineContext?.side ?? null,
         })
         .returning()
-        .then((rows) => rows[0]);
+        .then((rows) => redactApprovalComment(rows[0]));
     },
   };
 }

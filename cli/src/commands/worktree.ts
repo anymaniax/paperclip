@@ -62,6 +62,10 @@ type WorktreeInitOptions = {
   force?: boolean;
 };
 
+type WorktreeMakeOptions = WorktreeInitOptions & {
+  startPoint?: string;
+};
+
 type WorktreeEnvOptions = {
   config?: string;
   json?: boolean;
@@ -113,6 +117,72 @@ type SeedWorktreeDatabaseResult = {
 
 function nonEmpty(value: string | null | undefined): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function isCurrentSourceConfigPath(sourceConfigPath: string): boolean {
+  const currentConfigPath = process.env.PAPERCLIP_CONFIG;
+  if (!currentConfigPath || currentConfigPath.trim().length === 0) {
+    return false;
+  }
+  return path.resolve(currentConfigPath) === path.resolve(sourceConfigPath);
+}
+
+function resolveWorktreeMakeName(name: string): string {
+  const value = nonEmpty(name);
+  if (!value) {
+    throw new Error("Worktree name is required.");
+  }
+  if (!/^[A-Za-z0-9._-]+$/.test(value)) {
+    throw new Error(
+      "Worktree name must contain only letters, numbers, dots, underscores, or dashes.",
+    );
+  }
+  return value;
+}
+
+export function resolveWorktreeMakeTargetPath(name: string): string {
+  return path.resolve(os.homedir(), resolveWorktreeMakeName(name));
+}
+
+function extractExecSyncErrorMessage(error: unknown): string | null {
+  if (!error || typeof error !== "object") {
+    return error instanceof Error ? error.message : null;
+  }
+
+  const stderr = "stderr" in error ? error.stderr : null;
+  if (typeof stderr === "string") {
+    return nonEmpty(stderr);
+  }
+  if (stderr instanceof Buffer) {
+    return nonEmpty(stderr.toString("utf8"));
+  }
+
+  return error instanceof Error ? nonEmpty(error.message) : null;
+}
+
+function localBranchExists(cwd: string, branchName: string): boolean {
+  try {
+    execFileSync("git", ["show-ref", "--verify", "--quiet", `refs/heads/${branchName}`], {
+      cwd,
+      stdio: "ignore",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function resolveGitWorktreeAddArgs(input: {
+  branchName: string;
+  targetPath: string;
+  branchExists: boolean;
+  startPoint?: string;
+}): string[] {
+  if (input.branchExists && !input.startPoint) {
+    return ["worktree", "add", input.targetPath, input.branchName];
+  }
+  const commitish = input.startPoint ?? "HEAD";
+  return ["worktree", "add", "-b", input.branchName, input.targetPath, commitish];
 }
 
 function readPidFilePort(postmasterPidFile: string): number | null {
@@ -378,9 +448,10 @@ export function copySeededSecretsKey(input: {
 
   mkdirSync(path.dirname(input.targetKeyFilePath), { recursive: true });
 
+  const allowProcessEnvFallback = isCurrentSourceConfigPath(input.sourceConfigPath);
   const sourceInlineMasterKey =
     nonEmpty(input.sourceEnvEntries.PAPERCLIP_SECRETS_MASTER_KEY) ??
-    nonEmpty(process.env.PAPERCLIP_SECRETS_MASTER_KEY);
+    (allowProcessEnvFallback ? nonEmpty(process.env.PAPERCLIP_SECRETS_MASTER_KEY) : null);
   if (sourceInlineMasterKey) {
     writeFileSync(input.targetKeyFilePath, sourceInlineMasterKey, {
       encoding: "utf8",
@@ -396,7 +467,7 @@ export function copySeededSecretsKey(input: {
 
   const sourceKeyFileOverride =
     nonEmpty(input.sourceEnvEntries.PAPERCLIP_SECRETS_MASTER_KEY_FILE) ??
-    nonEmpty(process.env.PAPERCLIP_SECRETS_MASTER_KEY_FILE);
+    (allowProcessEnvFallback ? nonEmpty(process.env.PAPERCLIP_SECRETS_MASTER_KEY_FILE) : null);
   const sourceConfiguredKeyPath = sourceKeyFileOverride ?? input.sourceConfig.secrets.localEncrypted.keyFilePath;
   const sourceKeyFilePath = resolveRuntimeLikePath(sourceConfiguredKeyPath, input.sourceConfigPath);
 
@@ -538,10 +609,7 @@ async function seedWorktreeDatabase(input: {
   }
 }
 
-export async function worktreeInitCommand(opts: WorktreeInitOptions): Promise<void> {
-  printPaperclipCliBanner();
-  p.intro(pc.bgCyan(pc.black(" paperclipai worktree init ")));
-
+async function runWorktreeInit(opts: WorktreeInitOptions): Promise<void> {
   const cwd = process.cwd();
   const name = resolveSuggestedWorktreeName(
     cwd,
@@ -583,7 +651,17 @@ export async function worktreeInitCommand(opts: WorktreeInitOptions): Promise<vo
   });
 
   writeConfig(targetConfig, paths.configPath);
-  mergePaperclipEnvEntries(buildWorktreeEnvEntries(paths), paths.envPath);
+  const sourceEnvEntries = readPaperclipEnvEntries(resolvePaperclipEnvFile(sourceConfigPath));
+  const existingAgentJwtSecret =
+    nonEmpty(sourceEnvEntries.PAPERCLIP_AGENT_JWT_SECRET) ??
+    nonEmpty(process.env.PAPERCLIP_AGENT_JWT_SECRET);
+  mergePaperclipEnvEntries(
+    {
+      ...buildWorktreeEnvEntries(paths),
+      ...(existingAgentJwtSecret ? { PAPERCLIP_AGENT_JWT_SECRET: existingAgentJwtSecret } : {}),
+    },
+    paths.envPath,
+  );
   ensureAgentJwtSecret(paths.configPath);
   loadPaperclipEnvFile(paths.configPath);
   const copiedGitHooks = copyGitHooksToWorktreeGitDir(cwd);
@@ -642,6 +720,85 @@ export async function worktreeInitCommand(opts: WorktreeInitOptions): Promise<vo
   );
 }
 
+export async function worktreeInitCommand(opts: WorktreeInitOptions): Promise<void> {
+  printPaperclipCliBanner();
+  p.intro(pc.bgCyan(pc.black(" paperclipai worktree init ")));
+  await runWorktreeInit(opts);
+}
+
+export async function worktreeMakeCommand(nameArg: string, opts: WorktreeMakeOptions): Promise<void> {
+  printPaperclipCliBanner();
+  p.intro(pc.bgCyan(pc.black(" paperclipai worktree:make ")));
+
+  const name = resolveWorktreeMakeName(nameArg);
+  const sourceCwd = process.cwd();
+  const targetPath = resolveWorktreeMakeTargetPath(name);
+  if (existsSync(targetPath)) {
+    throw new Error(`Target path already exists: ${targetPath}`);
+  }
+
+  mkdirSync(path.dirname(targetPath), { recursive: true });
+  if (opts.startPoint) {
+    const [remote] = opts.startPoint.split("/", 1);
+    try {
+      execFileSync("git", ["fetch", remote], {
+        cwd: sourceCwd,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (error) {
+      throw new Error(
+        `Failed to fetch from remote "${remote}": ${extractExecSyncErrorMessage(error) ?? String(error)}`,
+      );
+    }
+  }
+
+  const worktreeArgs = resolveGitWorktreeAddArgs({
+    branchName: name,
+    targetPath,
+    branchExists: !opts.startPoint && localBranchExists(sourceCwd, name),
+    startPoint: opts.startPoint,
+  });
+
+  const spinner = p.spinner();
+  spinner.start(`Creating git worktree at ${targetPath}...`);
+  try {
+    execFileSync("git", worktreeArgs, {
+      cwd: sourceCwd,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    spinner.stop(`Created git worktree at ${targetPath}.`);
+  } catch (error) {
+    spinner.stop(pc.red("Failed to create git worktree."));
+    throw new Error(extractExecSyncErrorMessage(error) ?? String(error));
+  }
+
+  const installSpinner = p.spinner();
+  installSpinner.start("Installing dependencies...");
+  try {
+    execFileSync("pnpm", ["install"], {
+      cwd: targetPath,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    installSpinner.stop("Installed dependencies.");
+  } catch (error) {
+    installSpinner.stop(pc.yellow("Failed to install dependencies (continuing anyway)."));
+    p.log.warning(extractExecSyncErrorMessage(error) ?? String(error));
+  }
+
+  const originalCwd = process.cwd();
+  try {
+    process.chdir(targetPath);
+    await runWorktreeInit({
+      ...opts,
+      name,
+    });
+  } catch (error) {
+    throw error;
+  } finally {
+    process.chdir(originalCwd);
+  }
+}
+
 export async function worktreeEnvCommand(opts: WorktreeEnvOptions): Promise<void> {
   const configPath = resolveConfigPath(opts.config);
   const envPath = resolvePaperclipEnvFile(configPath);
@@ -664,6 +821,23 @@ export async function worktreeEnvCommand(opts: WorktreeEnvOptions): Promise<void
 
 export function registerWorktreeCommands(program: Command): void {
   const worktree = program.command("worktree").description("Worktree-local Paperclip instance helpers");
+
+  program
+    .command("worktree:make")
+    .description("Create ~/NAME as a git worktree, then initialize an isolated Paperclip instance inside it")
+    .argument("<name>", "Worktree directory and branch name (created at ~/NAME)")
+    .option("--start-point <ref>", "Remote ref to base the new branch on (e.g. origin/main)")
+    .option("--instance <id>", "Explicit isolated instance id")
+    .option("--home <path>", `Home root for worktree instances (default: ${DEFAULT_WORKTREE_HOME})`)
+    .option("--from-config <path>", "Source config.json to seed from")
+    .option("--from-data-dir <path>", "Source PAPERCLIP_HOME used when deriving the source config")
+    .option("--from-instance <id>", "Source instance id when deriving the source config", "default")
+    .option("--server-port <port>", "Preferred server port", (value) => Number(value))
+    .option("--db-port <port>", "Preferred embedded Postgres port", (value) => Number(value))
+    .option("--seed-mode <mode>", "Seed profile: minimal or full (default: minimal)", "minimal")
+    .option("--no-seed", "Skip database seeding from the source instance")
+    .option("--force", "Replace existing repo-local config and isolated instance data", false)
+    .action(worktreeMakeCommand);
 
   worktree
     .command("init")

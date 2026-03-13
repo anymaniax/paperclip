@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "@/lib/router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { issuesApi } from "../api/issues";
 import { activityApi } from "../api/activity";
@@ -11,6 +11,7 @@ import { useCompany } from "../context/CompanyContext";
 import { usePanel } from "../context/PanelContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
+import { readIssueDetailBreadcrumb } from "../lib/issueDetailBreadcrumb";
 import { useProjectOrder } from "../hooks/useProjectOrder";
 import { relativeTime, cn, formatTokens } from "../lib/utils";
 import { InlineEditor } from "../components/InlineEditor";
@@ -152,6 +153,7 @@ export function IssueDetail() {
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const location = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
   const [mobilePropsOpen, setMobilePropsOpen] = useState(false);
   const [detailTab, setDetailTab] = useState("comments");
@@ -215,6 +217,10 @@ export function IssueDetail() {
   });
 
   const hasLiveRuns = (liveRuns ?? []).length > 0 || !!activeRun;
+  const sourceBreadcrumb = useMemo(
+    () => readIssueDetailBreadcrumb(location.state) ?? { label: "Issues", href: "/issues" },
+    [location.state],
+  );
 
   // Filter out runs already shown by the live widget to avoid duplication
   const timelineRuns = useMemo(() => {
@@ -470,17 +476,17 @@ export function IssueDetail() {
   useEffect(() => {
     const titleLabel = issue?.title ?? issueId ?? "Issue";
     setBreadcrumbs([
-      { label: "Issues", href: "/issues" },
+      sourceBreadcrumb,
       { label: hasLiveRuns ? `🔵 ${titleLabel}` : titleLabel },
     ]);
-  }, [setBreadcrumbs, issue, issueId, hasLiveRuns]);
+  }, [setBreadcrumbs, sourceBreadcrumb, issue, issueId, hasLiveRuns]);
 
   // Redirect to identifier-based URL if navigated via UUID
   useEffect(() => {
     if (issue?.identifier && issueId !== issue.identifier) {
-      navigate(`/issues/${issue.identifier}`, { replace: true });
+      navigate(`/issues/${issue.identifier}`, { replace: true, state: location.state });
     }
-  }, [issue, issueId, navigate]);
+  }, [issue, issueId, navigate, location.state]);
 
   useEffect(() => {
     if (!issue?.id) return;
@@ -526,6 +532,7 @@ export function IssueDetail() {
               {i > 0 && <ChevronRight className="h-3 w-3 shrink-0" />}
               <Link
                 to={`/issues/${ancestor.identifier ?? ancestor.id}`}
+                state={location.state}
                 className="hover:text-foreground transition-colors truncate max-w-[200px]"
                 title={ancestor.title}
               >
@@ -560,7 +567,7 @@ export function IssueDetail() {
           {hasLiveRuns && (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 px-2 py-0.5 text-[10px] font-medium text-cyan-600 dark:text-cyan-400 shrink-0">
               <span className="relative flex h-1.5 w-1.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
+                <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
                 <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-400" />
               </span>
               Live
@@ -663,7 +670,7 @@ export function IssueDetail() {
           value={issue.description ?? ""}
           onSave={(description) => updateIssue.mutate({ description })}
           as="p"
-          className="text-sm text-muted-foreground"
+          className="text-[15px] leading-7 text-foreground"
           placeholder="Add a description..."
           multiline
           mentions={mentionOptions}
@@ -802,6 +809,7 @@ export function IssueDetail() {
                 <Link
                   key={child.id}
                   to={`/issues/${child.identifier ?? child.id}`}
+                  state={location.state}
                   className="flex items-center justify-between px-3 py-2 text-sm hover:bg-accent/20 transition-colors"
                 >
                   <div className="flex items-center gap-2 min-w-0">
@@ -912,7 +920,7 @@ export function IssueDetail() {
               {!issueCostSummary.hasCost && !issueCostSummary.hasTokens ? (
                 <div className="text-xs text-muted-foreground">No cost data yet.</div>
               ) : (
-                <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                <div className="flex flex-wrap gap-3 text-xs text-muted-foreground tabular-nums">
                   {issueCostSummary.hasCost && (
                     <span className="font-medium text-foreground">
                       ${issueCostSummary.cost.toFixed(4)}
